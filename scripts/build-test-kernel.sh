@@ -30,6 +30,10 @@ if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
 	echo "Full kernel compilation is restricted to GitHub Actions" >&2
 	exit 2
 fi
+if [[ "${ARMBIAN_RUNNING_IN_CONTAINER:-}" == "yes" ]] || [[ -e /.dockerenv ]]; then
+	echo "Nested Docker builds are not allowed; use the native ARM64 runner" >&2
+	exit 2
+fi
 if [[ -z "${RUNNER_TEMP:-}" ]]; then
 	echo "RUNNER_TEMP is required" >&2
 	exit 2
@@ -99,6 +103,7 @@ echo "Config SHA256 ${config_sha256}; patch SHA256 ${patch_sha256}"
 (
 	cd "${armbian_dir}"
 	./compile.sh kernel \
+		PREFER_DOCKER=no \
 		BOARD="${ARMBIAN_BOARD}" \
 		BRANCH="${ARMBIAN_BRANCH}" \
 		RELEASE=bookworm \
