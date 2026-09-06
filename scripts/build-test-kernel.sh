@@ -140,7 +140,10 @@ if [[ "${actual_linux_commit}" != "${LINUX_COMMIT}" ]]; then
 	exit 3
 fi
 
-git -C "${kernel_source}" diff --check
+# The worktree also contains the fixed Armbian patch set.  Some unrelated DTS
+# patches carry pre-existing whitespace warnings, so validate only our target.
+git -C "${kernel_source}" diff --check -- \
+	drivers/usb/typec/tcpm/fusb302.c
 grep -Fq "start unattached SRC toggling" \
 	"${kernel_source}/drivers/usb/typec/tcpm/fusb302.c"
 grep -Fq "extcon,ignore-usb" \

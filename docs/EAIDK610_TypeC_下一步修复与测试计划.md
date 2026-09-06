@@ -116,6 +116,7 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 - 该 run 随后在 Debian 打包阶段失败：打包器按默认 family 查找 `image/boot/vmlinu*-7.1.8-edge-rockchip64`，而内核 Make 已生成带 `-eaidk610-typec-r1` 的文件。根因是原 `typec-test-localversion` 扩展只覆盖 Make 的 `LOCALVERSION`，没有同步改变 Armbian 的 `kernel_version_family`。
 - 修正方案删除该扩展，改为在 `userpatches/config/sources/families/rockchip64.conf` 中设置测试专用 `LINUXFAMILY=rockchip64-eaidk610-typec-r1`，同时显式保留 `LINUXCONFIG=linux-rockchip64-edge` 和 `KERNELPATCHDIR=archive/rockchip64-7.1`。固定 Armbian 提交的 Make、模块安装、Debian 路径和包名都使用该 family，因此名称将保持一致。
 - artifact 的 `SHA256SUMS` 改在构建命令及 `tee` 完全结束后由独立的 `if: always()` 步骤生成，避免散列计算后 `build.log` 仍被追加；编译器版本直接读取内核生成的 `include/generated/compile.h`，不依赖 runner 宿主是否恰好安装同名交叉编译器。
+- run `34012127716` 证明 family 修正有效：内核完成编译，image、DTB、headers、libc-dev 四个包均完成创建，版本和模块目录一致。随后仓库脚本的全树 `git diff --check` 命中 Armbian 既有 DTS 补丁中的空白字符并退出；这不是本次 FUSB302 文件的问题。检查范围因此收窄为 `drivers/usb/typec/tcpm/fusb302.c`，继续保留对本补丁的 whitespace 验证而不让无关基线告警阻断产物收集。
 
 ## 五、仓库与 workflow 交付内容
 
