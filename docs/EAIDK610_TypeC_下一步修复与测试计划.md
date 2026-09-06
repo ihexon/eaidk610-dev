@@ -85,22 +85,22 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 
 配置中 FUSB302/TCPM 为内建 `=y`，本次按构建完整测试内核处理。Image、模块、配置和 initramfs 必须匹配，不能用其它版本 headers 或复制旧 `.ko` 代替。
 
-### 3.1 Armbian 框架与传统 make 的边界
+### 3.1 采用 Armbian 标准 kernel 流程
 
 当前 r1 的确由 Armbian build 驱动：`scripts/build-test-kernel.sh` 固定 build 提交后执行 `./compile.sh kernel`。框架负责取得固定 Linux 源码、按 rockchip64-7.1 的既定顺序应用补丁、放入板上配置、执行内核/模块/DTB 安装并生成 Debian 包。run `34013982555` 的日志显示总计应用 228 项，其中第 1 项是本仓库 FUSB302 补丁，其余为 Armbian rockchip64 补丁集；该补丁集明确包含 `typec-extcon` bridge、TCPM 修正、Rockchip USB PHY/charger detection 等改动。因此不能从纯上游 `25c76bea...` 加一份 FUSB302 补丁就直接替代当前内核。
 
-但 Armbian 框架不是运行内核或部署格式的硬依赖。只要最终源码树等价，GitHub ARM64 runner 完全可以用传统 Kbuild：
+本项目选择继续走 Armbian 正统 kernel 流程，不再维护传统 Kbuild/tar 的并行路线。GitHub Actions 只完成四件事：固定 Armbian 提交、把配置和补丁安装到标准 `userpatches` 路径、执行现代 kernel-only CLI、收集 Armbian 原生 `.deb`：
 
 ```sh
-make olddefconfig
-make -j"$(nproc)" Image modules dtbs
-make INSTALL_MOD_PATH="$stage" modules_install
-make INSTALL_DTBS_PATH="$stage/boot/dtb-$kernelrelease" dtbs_install
+./compile.sh kernel \
+  BOARD=rockpro64 \
+  BRANCH=edge \
+  KERNEL_CONFIGURE=no
 ```
 
-建议后续采用“Armbian 只准备固定源码与补丁，传统 make 负责构建”的混合路线，或先把 Armbian 生成的完整补丁顺序固定成可审计清单；然后将 Image、config、System.map、模块和 DTB 打成带 SHA256/manifest 的 tar.zst，并随附目标校验、备份、initramfs、`uInitrd` 和原子软链接切换的 installer 脚本。这样可以去掉 Debian 包名/maintainer script 相关复杂度，又不会丢失 Armbian edge 的板级代码。
+必要的项目定制也全部使用 Armbian 支持的 `userpatches` 接口：板上配置放入 `userpatches/config/kernel/linux-rockchip64-edge.config`，FUSB302 补丁放入 `userpatches/kernel/archive/rockchip64-7.1/`。唯一的 family override 负责让测试内核拥有独立 kernelrelease；若仍使用默认 `rockchip64`，测试 Image、模块和 DTB 会与已知可用版本同名，无法安全并存。该 override 显式继承原 `linux-rockchip64-edge` 配置和 `archive/rockchip64-7.1` 补丁目录，不改变补丁基线。
 
-收益需要按日志估算：r1 的内核编译为 2274 秒，Debian 打包只有 59 秒。仅把 `.deb` 改为 tgz 主要简化部署，节省约一分钟，不会把完整编译从约 38 分钟降到几分钟。若目标是显著加速，优先缓存已打补丁源码、工具链和 ccache，后续只在补丁/配置变化时做增量构建。已经成功启动的 r1 不为更换产物格式重复构建；此路线用于下一版内核迭代。
+构建脚本不再解开 `.deb`、复制 Image/System.map、重打 modules/DTB tar 包，也不解析 Armbian 内部源码目录或 `compile.h`。Armbian 成功后只复制 `output/debs/*.deb`，用 `dpkg-deb` 检查 image/DTB 包名、arm64 架构以及归档成员中的目标 kernelrelease、模块目录和 EAIDK610 DTB；这套轻量检查已经用 run `34013982555` 的成功包离线通过。r1 的内核编译为 2274 秒、Armbian 打包为 59 秒，保留原生包不会显著增加时间。
 
 ## 四、驱动补丁的具体工作
 
@@ -132,13 +132,13 @@ make INSTALL_DTBS_PATH="$stage/boot/dtb-$kernelrelease" dtbs_install
 - run [`34000886605`](https://github.com/ihexon/eaidk610-dev/actions/runs/34000886605) 使用外层 `ubuntu-24.04-arm` runner 和内层 Armbian ARM64 Docker 构建环境。日志显示补丁以 `001/228` 应用到 `fusb302.c`，内核在 2247 秒内完成编译，并将模块安装到 `lib/modules/7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 - 该 run 随后在 Debian 打包阶段失败：打包器按默认 family 查找 `image/boot/vmlinu*-7.1.8-edge-rockchip64`，而内核 Make 已生成带 `-eaidk610-typec-r1` 的文件。根因是原 `typec-test-localversion` 扩展只覆盖 Make 的 `LOCALVERSION`，没有同步改变 Armbian 的 `kernel_version_family`。
 - 修正方案删除该扩展，改为在 `userpatches/config/sources/families/rockchip64.conf` 中设置测试专用 `LINUXFAMILY=rockchip64-eaidk610-typec-r1`，同时显式保留 `LINUXCONFIG=linux-rockchip64-edge` 和 `KERNELPATCHDIR=archive/rockchip64-7.1`。固定 Armbian 提交的 Make、模块安装、Debian 路径和包名都使用该 family，因此名称将保持一致。
-- artifact 的 `SHA256SUMS` 改在构建命令及 `tee` 完全结束后由独立的 `if: always()` 步骤生成，避免散列计算后 `build.log` 仍被追加；编译器版本直接读取内核生成的 `include/generated/compile.h`，不依赖 runner 宿主是否恰好安装同名交叉编译器。
+- artifact 的 `SHA256SUMS` 改在构建命令及 `tee` 完全结束后由独立的 `if: always()` 步骤生成，避免散列计算后 `build.log` 仍被追加。早期 wrapper 曾解析 `include/generated/compile.h`，简化后的正统流程已删除这项非部署必需的解析。
 - run `34012127716` 证明 family 修正有效：内核完成编译，image、DTB、headers、libc-dev 四个包均完成创建，版本和模块目录一致。随后仓库脚本的全树 `git diff --check` 命中 Armbian 既有 DTS 补丁中的空白字符并退出；这不是本次 FUSB302 文件的问题。检查范围因此收窄为 `drivers/usb/typec/tcpm/fusb302.c`，继续保留对本补丁的 whitespace 验证而不让无关基线告警阻断产物收集。
 - run [`34013982555`](https://github.com/ihexon/eaidk610-dev/actions/runs/34013982555) 再次完成内核编译（2274 秒）和四类 Debian 包生成。artifact 中 `SHA256SUMS` 对日志及四个包全部校验通过；解开 image 包得到唯一模块目录 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，内核镜像包含本补丁新增的日志字符串。workflow 只在包已上传后因 `compile.h` 使用制表符而未被元数据解析表达式匹配，最终显示失败；解析表达式已修正，但按“内核编译完成即可”的验收标准不再为此重复全量构建。
 
-这些记录说明主要问题在仓库外围校验，而不是 Armbian 三次都没有编译出内核：run `34000886605` 已完成内核和模块，run `34012127716`、`34013982555` 还完成了四类包。为避免下一轮在约 38 分钟之后才暴露脚本错误，workflow 现先执行 `scripts/preflight-test-kernel-build.sh`，在任何下载和编译前检查：固定提交格式、config/补丁/family 文件 SHA-256、关键内核配置、family 与预期 kernelrelease 一致性、补丁语法和 `compile.h` 制表符解析 fixture。安装少量 runner 依赖后、启动 Armbian 前，再下载固定 Linux 提交的目标 `fusb302.c`，执行补丁精确 apply check。
+这些记录说明主要问题在仓库外围校验，而不是 Armbian 三次都没有编译出内核：run `34000886605` 已完成内核和模块，run `34012127716`、`34013982555` 还完成了四类包。为避免下一轮在约 38 分钟之后才暴露脚本错误，workflow 现先执行 `scripts/preflight-test-kernel-build.sh`，在任何下载和编译前检查：固定提交格式、config/补丁/family 文件 SHA-256、关键内核配置、family 与预期 kernelrelease 一致性及补丁语法。安装少量 runner 依赖后、启动 Armbian 前，再下载固定 Linux 提交的目标 `fusb302.c`，执行补丁精确 apply check。
 
-Armbian `compile.sh kernel` 成功返回后，构建脚本立即写入 `KERNEL-BUILD-SUCCEEDED.txt`，并在可选源码/元数据检查之前复制全部生成的 `.deb`。编译器说明属于清单元数据，解析不到时记录 `unavailable` 和 warning，不再让已经可部署的 Image/模块/DTB 丢失。kernelrelease、image/DTB 包唯一性、模块目录和关键补丁内容仍是强校验，不能为了 workflow 变绿而放弃产物正确性。当前调整只做静态验证并推送，不触发新的 r1 构建。
+Armbian `compile.sh kernel` 成功返回后，构建脚本立即写入 `KERNEL-BUILD-SUCCEEDED.txt` 并复制全部原生 `.deb`。之后只有已用现有成功包验证过的包元数据/成员名检查，不再访问易变化的 Armbian 内部 worktree，也不自行解包重打包。kernelrelease、image/DTB 包唯一性、模块目录和目标 DTB 仍是强校验，不能为了 workflow 变绿而放弃部署正确性。
 
 ## 五、仓库与 workflow 交付内容
 
@@ -149,7 +149,6 @@ eaidk610-dev/
 ├── .github/workflows/typec-test-kernel.yml
 ├── scripts/build-test-kernel.sh
 ├── scripts/preflight-test-kernel-build.sh
-├── scripts/read-kernel-compiler.sh
 ├── scripts/install-test-kernel-on-board.sh
 ├── scripts/check-typec-on-board.sh
 ├── kernel/build.env
@@ -165,15 +164,15 @@ eaidk610-dev/
 workflow 要求：
 
 - 支持 `workflow_dispatch`，初期不因任意文档提交自动启动大规模编译。
-- 所有不依赖编译产物的失败条件必须先由静态 preflight 检出；新增解析逻辑必须带最小 fixture，不能首次在 30 分钟后的产物上试验。
+- 所有不依赖编译产物的失败条件必须先由静态 preflight 检出；新增产物校验必须先用已有成功包离线测试，不能首次在 30 分钟后的产物上试验。
 - 使用 GitHub 托管的 ARM64 `ubuntu-24.04-arm`，不把本地 Docker 执行容器或 `.166` 注册为自托管 runner；workflow 先在宿主核对 `uname -m=aarch64` 和 Debian `arm64` 架构。Armbian 可在该 ARM64 runner 内启动其 ARM64 构建容器，日志中的 `🐳` 和 OCI manifest 下载即来自这一层；完整编译仍全部发生在 GitHub Actions。[runner 说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
 - checkout、artifact 等第三方 action 固定到核实过的提交；权限从 `contents: read` 开始，不授予无关写权限。
 - Linux、Armbian 补丁集、配置和补丁均可追溯；禁止静默换到 latest 内核。
 - 通过测试专用 Armbian `LINUXFAMILY` 设置独立 `KERNELRELEASE` `7.1.8-edge-rockchip64-eaidk610-typec-r1`，使内核、模块目录、Debian 路径和包名一致；最终仍以构建输出值为准。
-- 使用固定 Armbian `rockchip64-7.1` 补丁集和板上配置，完整编译 Image、模块与 DTB；解开生成的 Debian 包核对模块目录和唯一 kernelrelease 后再打包。失败时也上传构建日志和诊断信息。
-- Artifact 至少包含 Image、匹配模块、配置、System.map、构建清单、补丁、SHA256SUMS 和构建日志；建议命名 `eaidk610-typec-test`。
-- Armbian 成功返回后立即落盘成功标记并保存原始包；非关键清单字段失败只告警，影响启动安全的版本、模块、DTB 和补丁校验仍须失败。
-- 构建清单记录仓库提交、Linux/Armbian 提交、工具链、补丁哈希、配置差异、kernelrelease、run ID。
+- 使用固定 Armbian `rockchip64-7.1` 补丁集和板上配置，完整编译 Image、模块与 DTB；不解包重打包，只检查原生 Debian 包的控制字段和归档成员名。失败时也上传构建日志和诊断信息。
+- Artifact 直接包含 Armbian `output/debs` 原生包、构建清单、成功标记、SHA256SUMS 和构建日志，名称为 `eaidk610-typec-test`。
+- Armbian 成功返回后立即落盘成功标记并保存原始包；影响启动安全的版本、模块目录和 DTB 校验仍须失败。
+- 构建清单记录仓库提交、Linux/Armbian 提交、固定输入哈希、kernelrelease、run ID 和原生包版本。
 - 只编译并上传 artifact，不从云端自动 SSH 到内网开发板，不发布正式 Release。
 
 文件推送到默认分支后，在 Docker 容器中触发和查看：
@@ -317,4 +316,4 @@ sudo sync
 
 ## 九、恢复工作时的第一件事
 
-测试内核已安装并启动，下一步不再下载或重建 r1。恢复工作时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。若需要 r2，可改用“Armbian 固定补丁准备 + 传统 make + tar.zst/installer”的构建交付方式；仍须保留完整 rockchip64 edge 补丁集。
+测试内核已安装并启动。为验证简化后的正统 Armbian 流程，本轮会从当前提交手动重建相同 r1、核对 workflow 为绿色和原生包可用，但不重复部署到 `.166`。恢复实机测试时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。后续 r2 继续使用相同的 Armbian `userpatches + ./compile.sh kernel + 原生 .deb` 流程。

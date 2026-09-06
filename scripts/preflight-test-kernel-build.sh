@@ -58,12 +58,7 @@ grep -Fq 'start unattached SRC toggling' "${patch_path}"
 
 bash -n \
     "${script_dir}/build-test-kernel.sh" \
-    "${script_dir}/read-kernel-compiler.sh"
-
-compiler_fixture='#define\tLINUX_COMPILER\t"fixture gcc 1.2.3"'
-parsed_compiler=$(printf '%b\n' "${compiler_fixture}" | \
-    "${script_dir}/read-kernel-compiler.sh" -)
-[[ ${parsed_compiler} == 'fixture gcc 1.2.3' ]]
+    "${script_dir}/preflight-test-kernel-build.sh"
 
 printf 'Static kernel-build preflight passed\n'
 

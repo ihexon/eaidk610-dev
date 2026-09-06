@@ -16,8 +16,8 @@ Inputs:
 
 Before any expensive build, the workflow runs
 `scripts/preflight-test-kernel-build.sh`. It verifies the pinned input hashes,
-the family/release relationship, required Type-C configuration, patch syntax,
-and the compiler-metadata parser (including tab-separated `compile.h` input).
+the family/release relationship, required Type-C configuration, and patch
+syntax.
 The workflow then runs the `--network` variant to check that the patch applies
 to `fusb302.c` from the exact pinned Linux commit before starting Armbian.
 Run the same check locally after changing any build input:
@@ -28,9 +28,11 @@ scripts/preflight-test-kernel-build.sh
 
 When an input changes intentionally, update its SHA-256 in `build.env` in the
 same commit. Once Armbian returns successfully, the build script writes
-`KERNEL-BUILD-SUCCEEDED.txt` and preserves all original packages before doing
-optional metadata inspection. Missing compiler-description metadata is a
-warning; kernel release, modules, DTBs, and patch-content checks remain fatal.
+`KERNEL-BUILD-SUCCEEDED.txt` and copies Armbian's original packages without
+extracting or repackaging them. The only post-build checks inspect package
+metadata and tar member names for the expected kernel release, module tree, and
+EAIDK610 DTB. The same checks have been exercised against the packages from
+successful run `34013982555`.
 
 Run the workflow from the repository's Actions page, or with:
 

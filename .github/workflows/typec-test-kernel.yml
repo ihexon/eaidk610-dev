@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: scripts/preflight-test-kernel-build.sh --network
 
-      - name: Build kernel with fixed Armbian patch set
+      - name: Build with standard Armbian kernel CLI
         shell: bash
         run: |
           set -Eeuo pipefail

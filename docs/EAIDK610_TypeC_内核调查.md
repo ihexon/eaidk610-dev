@@ -158,9 +158,9 @@ aarch64-linux-gnu-objdump -D -b binary -m aarch64 \
 
 现在不需要用户先重编译来开启日志。修复阶段保持相同 Linux 基础版本、板级 overlay 和供电参数，只改 FUSB302 的 CC 更新路径；完整内核编译只在 GitHub Actions 的 ARM64 runner 进行。当前本地 Docker 容器不承担完整编译；Actions 上的 Armbian ARM64 构建容器属于该 runner 内的标准构建层。
 
-r1 当前使用 Armbian `./compile.sh kernel`，原因不是内核必须打成 `.deb`，而是需要可靠复现 rockchip64 edge 的完整补丁顺序。构建日志显示 228 项中第 1 项为本仓库 FUSB302 补丁，后续包含 `typec-extcon`、TCPM、Rockchip USB PHY/charger detection 等板级改动。后续可在 Armbian 准备出的等价源码树上直接执行传统 `make Image modules dtbs`，再输出 tar.zst 与 installer；不能用未应用这套补丁的纯上游 7.1.8 代替。run `34013982555` 中内核编译耗时 2274 秒、Debian 打包耗时 59 秒，因此 tgz 的主要价值是简化部署，真正的加速应来自已打补丁源码和编译缓存。
+r1 使用 Armbian 的现代 kernel-only CLI `./compile.sh kernel`，以可靠复现 rockchip64 edge 的完整补丁顺序。构建日志显示 228 项中第 1 项为本仓库 FUSB302 补丁，后续包含 `typec-extcon`、TCPM、Rockchip USB PHY/charger detection 等板级改动，不能用未应用这套补丁的纯上游 7.1.8 代替。项目决定继续采用正统 Armbian kernel 流程和它生成的原生 `.deb`，不再维护传统 make/tar 并行交付路线。
 
-历史 workflow 的红色结论主要来自本仓库外围步骤，而非 Armbian 没有生成内核：版本 family、过宽的 whitespace 检查和 `compile.h` 制表符解析分别在内核编译后暴露。现已增加零编译成本的静态 preflight，固定并校验 config、FUSB302 补丁和 family 文件哈希，测试关键配置、补丁语法、kernelrelease 关系及编译器元数据 parser fixture；启动 Armbian 前还会取固定 Linux 提交的原始 `fusb302.c` 做精确 apply check。以后若仍使用 Armbian，框架成功返回后先保存成功标记和全部原始包；非关键元数据只告警，启动安全相关的 Image、模块、DTB、版本和补丁检查仍保持强制失败。该调整不会自动触发新的耗时构建。
+历史 workflow 的红色结论主要来自本仓库外围步骤，而非 Armbian 没有生成内核：版本 family、过宽的 whitespace 检查和 `compile.h` 制表符解析分别在内核编译后暴露。简化后的 wrapper 删除源码树检查、`compile.h` 解析、自行解包和重打包，只负责准备标准 `userpatches`、调用 `compile.sh kernel`、复制 `output/debs`。编译前静态 preflight 固定并校验 config、FUSB302 补丁和 family 文件哈希，测试关键配置、补丁语法及 kernelrelease 关系，并取固定 Linux 提交的原始 `fusb302.c` 做精确 apply check。Armbian 成功后只用 `dpkg-deb` 检查原生包的版本、模块目录和 EAIDK610 DTB；相同检查已对 run `34013982555` 的包离线通过。
 
 第一次完整编译证明补丁进入目标源码，但原自定义 `LOCALVERSION` 扩展造成 Armbian 打包名称不一致。后续构建改用 `userpatches/config/sources/families/rockchip64.conf` 覆盖测试用 `LINUXFAMILY`，使 Make、模块目录、Debian 包路径与包名从同一变量生成；run `34013982555` 已证明该修正有效，实际版本为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 
