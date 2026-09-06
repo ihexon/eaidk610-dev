@@ -115,6 +115,7 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 - run [`34000886605`](https://github.com/ihexon/eaidk610-dev/actions/runs/34000886605) 使用外层 `ubuntu-24.04-arm` runner 和内层 Armbian ARM64 Docker 构建环境。日志显示补丁以 `001/228` 应用到 `fusb302.c`，内核在 2247 秒内完成编译，并将模块安装到 `lib/modules/7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 - 该 run 随后在 Debian 打包阶段失败：打包器按默认 family 查找 `image/boot/vmlinu*-7.1.8-edge-rockchip64`，而内核 Make 已生成带 `-eaidk610-typec-r1` 的文件。根因是原 `typec-test-localversion` 扩展只覆盖 Make 的 `LOCALVERSION`，没有同步改变 Armbian 的 `kernel_version_family`。
 - 修正方案删除该扩展，改为在 `userpatches/config/sources/families/rockchip64.conf` 中设置测试专用 `LINUXFAMILY=rockchip64-eaidk610-typec-r1`，同时显式保留 `LINUXCONFIG=linux-rockchip64-edge` 和 `KERNELPATCHDIR=archive/rockchip64-7.1`。固定 Armbian 提交的 Make、模块安装、Debian 路径和包名都使用该 family，因此名称将保持一致。
+- artifact 的 `SHA256SUMS` 改在构建命令及 `tee` 完全结束后由独立的 `if: always()` 步骤生成，避免散列计算后 `build.log` 仍被追加；编译器版本直接读取内核生成的 `include/generated/compile.h`，不依赖 runner 宿主是否恰好安装同名交叉编译器。
 
 ## 五、仓库与 workflow 交付内容
 

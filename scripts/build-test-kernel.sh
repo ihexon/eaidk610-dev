@@ -193,6 +193,17 @@ if [[ "${kernelrelease}" != "${EXPECTED_KERNELRELEASE}" ]]; then
 	exit 3
 fi
 
+compile_header="${kernel_source}/include/generated/compile.h"
+if [[ ! -f "${compile_header}" ]]; then
+	echo "Expected generated compiler metadata is missing: ${compile_header}" >&2
+	exit 3
+fi
+kernel_compiler="$(sed -n 's/^#define LINUX_COMPILER "\(.*\)"$/\1/p' "${compile_header}")"
+if [[ -z "${kernel_compiler}" ]]; then
+	echo "Unable to read LINUX_COMPILER from ${compile_header}" >&2
+	exit 3
+fi
+
 image_file="${image_root}/boot/vmlinuz-${kernelrelease}"
 config_file="${image_root}/boot/config-${kernelrelease}"
 system_map_file="${image_root}/boot/System.map-${kernelrelease}"
@@ -235,18 +246,11 @@ tar --zstd -cf "${package_dir}/dtbs-${kernelrelease}.tar.zst" \
 	printf 'kernelrelease=%s\n' "${kernelrelease}"
 	printf 'config_sha256=%s\n' "${config_sha256}"
 	printf 'patch_sha256=%s\n' "${patch_sha256}"
-	printf 'gcc=%s\n' "$(aarch64-linux-gnu-gcc --version | head -n 1)"
-	printf 'ld=%s\n' "$(aarch64-linux-gnu-ld --version | head -n 1)"
+	printf 'kernel_compiler=%s\n' "${kernel_compiler}"
 	printf 'source_tree_diff_stat_begin\n'
 	git -C "${kernel_source}" diff --stat
 	printf 'source_tree_diff_stat_end\n'
 } > "${package_dir}/BUILD-MANIFEST.txt"
-
-(
-	cd "${artifacts_dir}"
-	find . -type f ! -name SHA256SUMS -print0 | sort -z |
-		xargs -0 sha256sum > SHA256SUMS
-)
 
 echo "Built and packaged ${kernelrelease}"
 find "${artifacts_dir}" -maxdepth 2 -type f -printf '%P\n' | sort
