@@ -100,7 +100,7 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 
 必要的项目定制也全部使用 Armbian 支持的 `userpatches` 接口：板上配置放入 `userpatches/config/kernel/linux-rockchip64-edge.config`，FUSB302 补丁放入 `userpatches/kernel/archive/rockchip64-7.1/`。唯一的 family override 负责让测试内核拥有独立 kernelrelease；若仍使用默认 `rockchip64`，测试 Image、模块和 DTB 会与已知可用版本同名，无法安全并存。该 override 显式继承原 `linux-rockchip64-edge` 配置和 `archive/rockchip64-7.1` 补丁目录，不改变补丁基线。
 
-构建脚本不再解开 `.deb`、复制 Image/System.map、重打 modules/DTB tar 包，也不解析 Armbian 内部源码目录或 `compile.h`。Armbian 成功后只复制 `output/debs/*.deb`，用 `dpkg-deb` 检查 image/DTB 包名、arm64 架构以及归档成员中的目标 kernelrelease、模块目录和 EAIDK610 DTB；这套轻量检查已经用 run `34013982555` 的成功包离线通过。r1 的内核编译为 2274 秒、Armbian 打包为 59 秒，保留原生包不会显著增加时间。
+构建脚本不再解开 `.deb`、复制 Image/System.map、重打 modules/DTB tar 包，也不解析 Armbian 内部源码目录或 `compile.h`。Armbian 成功后只复制 `output/debs/*.deb`，用 `dpkg-deb` 检查 image/DTB 包名、arm64 架构以及归档成员中的目标 kernelrelease、模块目录和 EAIDK610 DTB；这套轻量检查先用 run `34013982555` 的成功包离线通过，再由 run `34017439800` 的全量重建证明。新 run 的 r1 内核编译为 2217 秒、Armbian 打包为 54 秒，整个 job 为 42 分 6 秒，保留原生包不会显著增加时间。
 
 ## 四、驱动补丁的具体工作
 
@@ -135,8 +135,9 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 - artifact 的 `SHA256SUMS` 改在构建命令及 `tee` 完全结束后由独立的 `if: always()` 步骤生成，避免散列计算后 `build.log` 仍被追加。早期 wrapper 曾解析 `include/generated/compile.h`，简化后的正统流程已删除这项非部署必需的解析。
 - run `34012127716` 证明 family 修正有效：内核完成编译，image、DTB、headers、libc-dev 四个包均完成创建，版本和模块目录一致。随后仓库脚本的全树 `git diff --check` 命中 Armbian 既有 DTS 补丁中的空白字符并退出；这不是本次 FUSB302 文件的问题。检查范围因此收窄为 `drivers/usb/typec/tcpm/fusb302.c`，继续保留对本补丁的 whitespace 验证而不让无关基线告警阻断产物收集。
 - run [`34013982555`](https://github.com/ihexon/eaidk610-dev/actions/runs/34013982555) 再次完成内核编译（2274 秒）和四类 Debian 包生成。artifact 中 `SHA256SUMS` 对日志及四个包全部校验通过；解开 image 包得到唯一模块目录 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，内核镜像包含本补丁新增的日志字符串。workflow 只在包已上传后因 `compile.h` 使用制表符而未被元数据解析表达式匹配，最终显示失败；解析表达式已修正，但按“内核编译完成即可”的验收标准不再为此重复全量构建。
+- run [`34017439800`](https://github.com/ihexon/eaidk610-dev/actions/runs/34017439800) 从简化提交 `4d82288ca488720b95e739e903054b651ec8be2b` 手动触发且全绿完成。外层为 GitHub 托管 `ubuntu-24.04-arm`，标准 `./compile.sh kernel` 步骤成功；日志确认本补丁以 `001/228` 应用并实际编译 `drivers/usb/typec/tcpm/fusb302.o`，内核编译 2217 秒、打包 54 秒，总 job 42 分 6 秒。下载 artifact 后 `SHA256SUMS` 全部通过，四个 `26.08.0-trunk` 软件包均为 arm64；image 包包含目标 `vmlinuz` 和模块目录，DTB 包包含 `rockchip/rk3399-eaidk-610.dtb`。image 与 DTB 包的 SHA-256 分别为 `00bc986e0f1864d245df7db5902a08197b8c0532790db473ad1dd50a7bcad353`、`ab825dc5d4badb64d9aefe48e871ecded6f3dd81b7d29364aa804af2c72053bf`。
 
-这些记录说明主要问题在仓库外围校验，而不是 Armbian 三次都没有编译出内核：run `34000886605` 已完成内核和模块，run `34012127716`、`34013982555` 还完成了四类包。为避免下一轮在约 38 分钟之后才暴露脚本错误，workflow 现先执行 `scripts/preflight-test-kernel-build.sh`，在任何下载和编译前检查：固定提交格式、config/补丁/family 文件 SHA-256、关键内核配置、family 与预期 kernelrelease 一致性及补丁语法。安装少量 runner 依赖后、启动 Armbian 前，再下载固定 Linux 提交的目标 `fusb302.c`，执行补丁精确 apply check。
+这些记录说明早期问题在仓库外围校验，而不是 Armbian 没有编译出内核：run `34000886605` 已完成内核和模块，run `34012127716`、`34013982555` 还完成了四类包，run `34017439800` 则证明简化后的整条流程可以全绿结束。为避免以后在约 38 分钟之后才暴露脚本错误，workflow 先执行 `scripts/preflight-test-kernel-build.sh`，在任何下载和编译前检查：固定提交格式、config/补丁/family 文件 SHA-256、关键内核配置、family 与预期 kernelrelease 一致性及补丁语法。安装少量 runner 依赖后、启动 Armbian 前，再下载固定 Linux 提交的目标 `fusb302.c`，执行补丁精确 apply check。
 
 Armbian `compile.sh kernel` 成功返回后，构建脚本立即写入 `KERNEL-BUILD-SUCCEEDED.txt` 并复制全部原生 `.deb`。之后只有已用现有成功包验证过的包元数据/成员名检查，不再访问易变化的 Armbian 内部 worktree，也不自行解包重打包。kernelrelease、image/DTB 包唯一性、模块目录和目标 DTB 仍是强校验，不能为了 workflow 变绿而放弃部署正确性。
 
@@ -316,4 +317,4 @@ sudo sync
 
 ## 九、恢复工作时的第一件事
 
-测试内核已安装并启动。为验证简化后的正统 Armbian 流程，本轮会从当前提交手动重建相同 r1、核对 workflow 为绿色和原生包可用，但不重复部署到 `.166`。恢复实机测试时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。后续 r2 继续使用相同的 Armbian `userpatches + ./compile.sh kernel + 原生 .deb` 流程。
+测试内核已安装并启动；简化后的正统 Armbian 流程也已由 run `34017439800` 从提交 `4d82288ca488720b95e739e903054b651ec8be2b` 完成全量重建、绿色 workflow 和下载后包内容复验。本次只是重建相同 r1，没有重复部署到 `.166`。恢复实机测试时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。后续 r2 继续使用相同的 Armbian `userpatches + ./compile.sh kernel + 原生 .deb` 流程。

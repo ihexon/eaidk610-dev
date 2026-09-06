@@ -8,7 +8,7 @@
 
 原版内核日志、基础源码以及板上原版内核镜像的反汇编，共同指向 FUSB302 驱动的软件 Try.Source CC 更新路径不完整。测试内核已在 `port_type=dual`、手机带线启动的场景中自动进入 Source/Host 并完成 USB 枚举，驱动日志也证明新增路径实际执行并把 Rd 更新通知给 TCPM；这比临时 Source-only 重选提供了有效的实机修复证据。
 
-不需要为了开启普通日志再重编译：内核开启了 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。GitHub Actions run `34013982555` 已确认 Armbian 将第一版小补丁作为第 1/228 项应用，内核在 2274 秒内完成编译，image、DTB、headers 和 libc-dev 包均成功生成；生成的内核镜像也包含新增的 `start unattached SRC toggling` 日志字符串。workflow 最终因非关键的编译器元数据解析失败而标红，不影响这些产物，实际安装的 image 与 DTB 哈希和 artifact 一致。
+不需要为了开启普通日志再重编译：内核开启了 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。早期 run `34013982555` 已确认 Armbian 将第一版小补丁作为第 1/228 项应用并生成四类软件包；实际安装的 image 与 DTB 哈希和该 artifact 一致。简化流程后的 run [`34017439800`](https://github.com/ihexon/eaidk610-dev/actions/runs/34017439800) 对提交 `4d82288ca488720b95e739e903054b651ec8be2b` 完成了独立复验：内核编译 2217 秒、Armbian 打包 54 秒，整个 workflow 在 42 分 6 秒后为绿色，非关键的 `compile.h` 元数据解析已经从流程中删除。
 
 第一版补丁在未连接状态的 Rp 设置路径启用 FUSB302 fixed-source toggling，复用已有 TOGDONE 的双 CC Open/Rd/Ra 分类与通知；同时缓存 `set_roles()` 的 attached 状态，禁止已连接状态走该分支，以避开历史上的 PD power-role swap 回归。补丁由构建脚本复制到 Armbian 的 `userpatches/kernel/archive/rockchip64-7.1/`，再由 `compile.sh kernel` 应用到 `drivers/usb/typec/tcpm/fusb302.c`。固定输入和实现见仓库的 `kernel/build.env`、`kernel/patches/` 及 `.github/workflows/typec-test-kernel.yml`。
 
@@ -160,9 +160,9 @@ aarch64-linux-gnu-objdump -D -b binary -m aarch64 \
 
 r1 使用 Armbian 的现代 kernel-only CLI `./compile.sh kernel`，以可靠复现 rockchip64 edge 的完整补丁顺序。构建日志显示 228 项中第 1 项为本仓库 FUSB302 补丁，后续包含 `typec-extcon`、TCPM、Rockchip USB PHY/charger detection 等板级改动，不能用未应用这套补丁的纯上游 7.1.8 代替。项目决定继续采用正统 Armbian kernel 流程和它生成的原生 `.deb`，不再维护传统 make/tar 并行交付路线。
 
-历史 workflow 的红色结论主要来自本仓库外围步骤，而非 Armbian 没有生成内核：版本 family、过宽的 whitespace 检查和 `compile.h` 制表符解析分别在内核编译后暴露。简化后的 wrapper 删除源码树检查、`compile.h` 解析、自行解包和重打包，只负责准备标准 `userpatches`、调用 `compile.sh kernel`、复制 `output/debs`。编译前静态 preflight 固定并校验 config、FUSB302 补丁和 family 文件哈希，测试关键配置、补丁语法及 kernelrelease 关系，并取固定 Linux 提交的原始 `fusb302.c` 做精确 apply check。Armbian 成功后只用 `dpkg-deb` 检查原生包的版本、模块目录和 EAIDK610 DTB；相同检查已对 run `34013982555` 的包离线通过。
+历史 workflow 的红色结论主要来自本仓库外围步骤，而非 Armbian 没有生成内核：版本 family、过宽的 whitespace 检查和 `compile.h` 制表符解析分别在内核编译后暴露。简化后的 wrapper 删除源码树检查、`compile.h` 解析、自行解包和重打包，只负责准备标准 `userpatches`、调用 `compile.sh kernel`、复制 `output/debs`。编译前静态 preflight 固定并校验 config、FUSB302 补丁和 family 文件哈希，测试关键配置、补丁语法及 kernelrelease 关系，并取固定 Linux 提交的原始 `fusb302.c` 做精确 apply check。run `34017439800` 中这些检查全部通过；下载 artifact 后再次确认全部 `SHA256SUMS`、arm64 包元数据、`vmlinuz-7.1.8-edge-rockchip64-eaidk610-typec-r1`、对应模块目录和 `rockchip/rk3399-eaidk-610.dtb` 均正确。
 
-第一次完整编译证明补丁进入目标源码，但原自定义 `LOCALVERSION` 扩展造成 Armbian 打包名称不一致。后续构建改用 `userpatches/config/sources/families/rockchip64.conf` 覆盖测试用 `LINUXFAMILY`，使 Make、模块目录、Debian 包路径与包名从同一变量生成；run `34013982555` 已证明该修正有效，实际版本为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`。
+第一次完整编译证明补丁进入目标源码，但原自定义 `LOCALVERSION` 扩展造成 Armbian 打包名称不一致。后续构建改用 `userpatches/config/sources/families/rockchip64.conf` 覆盖测试用 `LINUXFAMILY`，使 Make、模块目录、Debian 包路径与包名从同一变量生成；run `34017439800` 已以全绿 workflow 再次证明该修正和简化流程有效，实际版本为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 
 定点日志应包括：
 
