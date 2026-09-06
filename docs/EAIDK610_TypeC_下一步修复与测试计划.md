@@ -130,7 +130,7 @@ eaidk610-dev/
 workflow 要求：
 
 - 支持 `workflow_dispatch`，初期不因任意文档提交自动启动大规模编译。
-- 使用 GitHub 托管的原生 ARM64 `ubuntu-24.04-arm`，不把 Docker 执行容器或 `.166` 注册为自托管 runner；构建脚本同时核对 `uname -m=aarch64`、Debian `arm64` 架构以及不在容器内，并向 Armbian 明确传入 `PREFER_DOCKER=no`，由 runner 宿主通过 sudo 原生构建。[runner 说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
+- 使用 GitHub 托管的 ARM64 `ubuntu-24.04-arm`，不把本地 Docker 执行容器或 `.166` 注册为自托管 runner；workflow 先在宿主核对 `uname -m=aarch64` 和 Debian `arm64` 架构。Armbian 可在该 ARM64 runner 内启动其 ARM64 构建容器，日志中的 `🐳` 和 OCI manifest 下载即来自这一层；完整编译仍全部发生在 GitHub Actions。[runner 说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
 - checkout、artifact 等第三方 action 固定到核实过的提交；权限从 `contents: read` 开始，不授予无关写权限。
 - Linux、Armbian 补丁集、配置和补丁均可追溯；禁止静默换到 latest 内核。
 - 设置独立 `KERNELRELEASE`，例如 `7.1.8-edge-rockchip64-eaidk610-typec-r1`；最终以构建输出值为准。

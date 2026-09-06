@@ -2,8 +2,9 @@
 
 This directory contains the fixed inputs for the first FUSB302 Try.Source test
 kernel. Full compilation is intentionally performed only by the manual GitHub
-Actions workflow on a native ARM64 runner. `PREFER_DOCKER=no` prevents the
-Armbian framework from launching a nested Docker build.
+Actions workflow on an ARM64 runner. The Armbian framework may launch its ARM64
+build container on that runner; it does not use the local development container
+or the EAIDK610 board for compilation.
 
 Inputs:
 

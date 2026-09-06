@@ -12,11 +12,9 @@ concurrency:
 
 jobs:
   build:
-    name: Native ARM64 kernel build
+    name: ARM64 kernel build
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
-    env:
-      PREFER_DOCKER: "no"
 
     steps:
       - name: Check out fixed repository revision
@@ -28,7 +26,6 @@ jobs:
           set -Eeuo pipefail
           test "$(uname -m)" = aarch64
           test "$(dpkg --print-architecture)" = arm64
-          test ! -e /.dockerenv
           sudo apt-get update
           sudo apt-get install --yes git jq zstd
           sudo apt-get clean
