@@ -6,9 +6,9 @@
 
 下一步应修复 FUSB302 驱动的软件 Try.Source CC 状态更新路径，用 GitHub Actions 构建测试内核，再安装到 `ihexon@192.168.1.166` 做实机对照测试。保留当前已经可用的 Type-C overlay，不继续通过修改相同 DT 属性排查这个内核问题。
 
-顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成初稿）→ ARM64 CI 编译与检查（补丁编译已通过，正在修复打包）→ 建立远端回退入口 → 安装测试内核 → 自动角色选择验收 → 整理正式补丁。
+顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成）→ ARM64 内核编译与打包（已完成）→ 建立远端回退入口 → 安装测试内核 → 自动角色选择验收 → 整理正式补丁。
 
-本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。第一次有效 Actions 构建确认补丁应用、内核编译和模块安装成功，但 Debian 打包因测试版本命名没有同步给 Armbian 打包器而失败；已改用测试 `LINUXFAMILY` 统一名称，等待重新构建。尚未取得可部署产物，也未安装或实机验证，测试板启动配置未修改。
+本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。Actions run `34013982555` 已完成补丁应用、内核编译、模块安装及四类 Debian 包生成，下载 artifact 的全部 SHA256 校验通过；workflow 在其后的非关键编译器元数据解析处标红。按当前验收标准，内核编译任务已经完成；尚未安装或实机验证，测试板启动配置未修改。
 
 ## 一、当前状态与不可突破的边界
 
@@ -22,7 +22,7 @@
 | 源码仓库 | `https://github.com/ihexon/eaidk610-dev`；容器内 Git 工作树为 `/home/ihexon/eaidk610-dev/eaidk610-dev`，通过 HTTPS 推送到 `main` |
 | GitHub CLI | 已安装；`github.com` 只保留并激活 `ihexon`，仓库权限为 `ADMIN`，Git 通过 HTTPS 由 `gh` 提供凭据 |
 | Git 提交身份 | 仓库级配置为 `ihexon <zzheasy@gmail.com>` |
-| 内核工程 | 补丁、固定输入、构建脚本和 workflow 已提交并推送；run `34000886605` 编译成功、打包失败，打包命名修正等待复跑 |
+| 内核工程 | 补丁、固定输入、构建脚本和 workflow 已提交并推送；run `34013982555` 已完成内核编译并生成四类 `.deb` |
 
 必须遵守：
 
@@ -117,6 +117,7 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 - 修正方案删除该扩展，改为在 `userpatches/config/sources/families/rockchip64.conf` 中设置测试专用 `LINUXFAMILY=rockchip64-eaidk610-typec-r1`，同时显式保留 `LINUXCONFIG=linux-rockchip64-edge` 和 `KERNELPATCHDIR=archive/rockchip64-7.1`。固定 Armbian 提交的 Make、模块安装、Debian 路径和包名都使用该 family，因此名称将保持一致。
 - artifact 的 `SHA256SUMS` 改在构建命令及 `tee` 完全结束后由独立的 `if: always()` 步骤生成，避免散列计算后 `build.log` 仍被追加；编译器版本直接读取内核生成的 `include/generated/compile.h`，不依赖 runner 宿主是否恰好安装同名交叉编译器。
 - run `34012127716` 证明 family 修正有效：内核完成编译，image、DTB、headers、libc-dev 四个包均完成创建，版本和模块目录一致。随后仓库脚本的全树 `git diff --check` 命中 Armbian 既有 DTS 补丁中的空白字符并退出；这不是本次 FUSB302 文件的问题。检查范围因此收窄为 `drivers/usb/typec/tcpm/fusb302.c`，继续保留对本补丁的 whitespace 验证而不让无关基线告警阻断产物收集。
+- run [`34013982555`](https://github.com/ihexon/eaidk610-dev/actions/runs/34013982555) 再次完成内核编译（2274 秒）和四类 Debian 包生成。artifact 中 `SHA256SUMS` 对日志及四个包全部校验通过；解开 image 包得到唯一模块目录 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，内核镜像包含本补丁新增的日志字符串。workflow 只在包已上传后因 `compile.h` 使用制表符而未被元数据解析表达式匹配，最终显示失败；解析表达式已修正，但按“内核编译完成即可”的验收标准不再为此重复全量构建。
 
 ## 五、仓库与 workflow 交付内容
 
@@ -303,4 +304,4 @@ sudo sync
 
 ## 九、恢复工作时的第一件事
 
-恢复工作时先查看打包命名修正所对应的 ARM64 workflow run 及 artifact；若仍失败，先把具体失败阶段和下一次修订同步到本文。构建成功后校验 SHA256 和构建清单，再进入 `.166` 的串口回退检查。当前不用用户先重编译一个“只开普通日志”的内核；安装、重启和实测仍应围绕上述可验证的小范围改动推进。
+恢复工作时使用 run `34013982555` 的 artifact；其 SHA256 和包内 kernelrelease 已核验。下一步若要实机测试，先进入 `.166` 的串口/离线回退检查，再安装测试内核。当前不用再重复编译一个“只开普通日志”的内核；安装、重启和实测仍应围绕上述可验证的小范围改动推进。

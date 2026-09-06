@@ -201,7 +201,7 @@ if [[ ! -f "${compile_header}" ]]; then
 	echo "Expected generated compiler metadata is missing: ${compile_header}" >&2
 	exit 3
 fi
-kernel_compiler="$(sed -n 's/^#define LINUX_COMPILER "\(.*\)"$/\1/p' "${compile_header}")"
+kernel_compiler="$(sed -n 's/^#define[[:space:]]\+LINUX_COMPILER[[:space:]]\+"\(.*\)"$/\1/p' "${compile_header}")"
 if [[ -z "${kernel_compiler}" ]]; then
 	echo "Unable to read LINUX_COMPILER from ${compile_header}" >&2
 	exit 3
