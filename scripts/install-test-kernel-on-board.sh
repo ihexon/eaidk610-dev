@@ -7,8 +7,8 @@ readonly old_release="7.1.8-edge-rockchip64"
 readonly staging="${1:-/home/ihexon/eaidk610-typec-test}"
 readonly image_package="linux-image-edge-rockchip64-eaidk610-typec-r1"
 readonly dtb_package="linux-dtb-edge-rockchip64-eaidk610-typec-r1"
-readonly image_sha256="fb80950b87cbd85a212ed2425c5b6bc2bff234c54ac608682a49b35a711be39b"
-readonly dtb_sha256="c38792402dcad9aa00527c2ab487203183cfb8e860e6f8ca62e2f88643a4db2a"
+readonly image_sha256="00bc986e0f1864d245df7db5902a08197b8c0532790db473ad1dd50a7bcad353"
+readonly dtb_sha256="ab825dc5d4badb64d9aefe48e871ecded6f3dd81b7d29364aa804af2c72053bf"
 readonly overlay="/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo"
 
 die() {
@@ -52,10 +52,10 @@ cp -a /boot/extlinux "${backup_dir}/"
     dpkg-query -W "${image_package}" "${dtb_package}" 2>/dev/null || true
 } >"${backup_dir}/preinstall-state.txt"
 
-if ! dpkg-query -W -f='${db:Status-Status}' "${image_package}" 2>/dev/null | grep -qx installed ||
-   ! dpkg-query -W -f='${db:Status-Status}' "${dtb_package}" 2>/dev/null | grep -qx installed; then
-    DEBIAN_FRONTEND=noninteractive dpkg -i "${dtb_deb}" "${image_deb}"
-fi
+# Always install the exact packages whose release hashes were verified above.
+# The same r1 package version may have been installed from an earlier CI run;
+# package status alone cannot prove that its bytes match this release.
+DEBIAN_FRONTEND=noninteractive dpkg -i "${dtb_deb}" "${image_deb}"
 
 dpkg --audit
 dpkg-query -W -f='${db:Status-Status}' "${image_package}" | grep -qx installed

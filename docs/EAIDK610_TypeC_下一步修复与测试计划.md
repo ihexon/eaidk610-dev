@@ -6,9 +6,9 @@
 
 FUSB302 软件 Try.Source CC 状态更新补丁已经用 GitHub Actions 构建，并安装到 `ihexon@192.168.1.166`。测试板已成功重启进入独立版本 `7.1.8-edge-rockchip64-eaidk610-typec-r1`；首轮带手机反向插入启动在 `port_type=dual` 下自动进入 Source/Host、枚举手机，补丁定点日志证明新路径完成 Rd 分类并通知 TCPM。继续保留现有 Type-C overlay，不修改相同 DT 属性。
 
-顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成）→ ARM64 内核编译与打包（已完成）→ 建立远端回退入口（已完成）→ 安装并启动测试内核（已完成）→ 自动角色选择首轮验收（已通过）→ 正反插与角色切换回归 → 整理正式补丁。
+顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成）→ ARM64 内核编译与打包（已完成）→ 建立远端回退入口（已完成）→ 安装并启动测试内核（已完成）→ 自动角色选择首轮验收（已通过）→ 发布 r1 pre-release（已完成）→ 正反插与角色切换回归 → 整理正式补丁。
 
-本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。Actions run `34013982555` 完成补丁应用、内核编译、模块安装及四类 Debian 包生成，下载 artifact 的全部 SHA256 校验通过；workflow 在其后的非关键编译器元数据解析处标红。image 与 DTB 包已经校验、安装并实机启动；首轮日志显示 `start unattached SRC toggling` 后正确测得 `Ra/Rd`，TCPM 随即进入 `SRC_ATTACHED` 和 `SRC_READY`。全面拔插与双角色回归尚未完成。
+本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。Actions run `34017439800` 通过标准 `./compile.sh kernel` 完成补丁应用、内核编译、模块/DTB 安装及四类 Debian 包生成，workflow 全绿，下载 artifact 的全部 SHA256 和关键归档成员复验通过；相同产物已发布为 GitHub pre-release [`eaidk610-typec-r1`](https://github.com/ihexon/eaidk610-dev/releases/tag/eaidk610-typec-r1)。image 与 DTB 包已经校验、安装并实机启动；首轮日志显示 `start unattached SRC toggling` 后正确测得 `Ra/Rd`，TCPM 随即进入 `SRC_ATTACHED` 和 `SRC_READY`。全面拔插与双角色回归尚未完成，因此暂不标记稳定版。
 
 ## 一、当前状态与不可突破的边界
 
@@ -174,7 +174,7 @@ workflow 要求：
 - Artifact 直接包含 Armbian `output/debs` 原生包、构建清单、成功标记、SHA256SUMS 和构建日志，名称为 `eaidk610-typec-test`。
 - Armbian 成功返回后立即落盘成功标记并保存原始包；影响启动安全的版本、模块目录和 DTB 校验仍须失败。
 - 构建清单记录仓库提交、Linux/Armbian 提交、固定输入哈希、kernelrelease、run ID 和原生包版本。
-- 只编译并上传 artifact，不从云端自动 SSH 到内网开发板，不发布正式 Release。
+- workflow 只编译并上传 artifact，不从云端自动 SSH 到内网开发板；人工复验后将 r1 的原生包、完整 artifact bundle、校验和与匹配安装脚本发布为 pre-release，不在 CI 中自动发布或自动部署。
 
 文件推送到默认分支后，在 Docker 容器中触发和查看：
 
@@ -317,4 +317,4 @@ sudo sync
 
 ## 九、恢复工作时的第一件事
 
-测试内核已安装并启动；简化后的正统 Armbian 流程也已由 run `34017439800` 从提交 `4d82288ca488720b95e739e903054b651ec8be2b` 完成全量重建、绿色 workflow 和下载后包内容复验。本次只是重建相同 r1，没有重复部署到 `.166`。恢复实机测试时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。后续 r2 继续使用相同的 Armbian `userpatches + ./compile.sh kernel + 原生 .deb` 流程。
+测试内核已安装并启动；简化后的正统 Armbian 流程也已由 run `34017439800` 从提交 `4d82288ca488720b95e739e903054b651ec8be2b` 完成全量重建、绿色 workflow 和下载后包内容复验，验证产物已发布为 pre-release `eaidk610-typec-r1`。本次只是重建和发布相同 r1，没有重复部署到 `.166`。恢复实机测试时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。后续 r2 继续使用相同的 Armbian `userpatches + ./compile.sh kernel + 原生 .deb` 流程。

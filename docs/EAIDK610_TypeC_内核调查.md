@@ -8,7 +8,7 @@
 
 原版内核日志、基础源码以及板上原版内核镜像的反汇编，共同指向 FUSB302 驱动的软件 Try.Source CC 更新路径不完整。测试内核已在 `port_type=dual`、手机带线启动的场景中自动进入 Source/Host 并完成 USB 枚举，驱动日志也证明新增路径实际执行并把 Rd 更新通知给 TCPM；这比临时 Source-only 重选提供了有效的实机修复证据。
 
-不需要为了开启普通日志再重编译：内核开启了 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。早期 run `34013982555` 已确认 Armbian 将第一版小补丁作为第 1/228 项应用并生成四类软件包；实际安装的 image 与 DTB 哈希和该 artifact 一致。简化流程后的 run [`34017439800`](https://github.com/ihexon/eaidk610-dev/actions/runs/34017439800) 对提交 `4d82288ca488720b95e739e903054b651ec8be2b` 完成了独立复验：内核编译 2217 秒、Armbian 打包 54 秒，整个 workflow 在 42 分 6 秒后为绿色，非关键的 `compile.h` 元数据解析已经从流程中删除。
+不需要为了开启普通日志再重编译：内核开启了 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。早期 run `34013982555` 已确认 Armbian 将第一版小补丁作为第 1/228 项应用并生成四类软件包；实际安装的 image 与 DTB 哈希和该 artifact 一致。简化流程后的 run [`34017439800`](https://github.com/ihexon/eaidk610-dev/actions/runs/34017439800) 对提交 `4d82288ca488720b95e739e903054b651ec8be2b` 完成了独立复验：内核编译 2217 秒、Armbian 打包 54 秒，整个 workflow 在 42 分 6 秒后为绿色，非关键的 `compile.h` 元数据解析已经从流程中删除。下载后复验通过的四个 Armbian 原生包已发布为 GitHub pre-release [`eaidk610-typec-r1`](https://github.com/ihexon/eaidk610-dev/releases/tag/eaidk610-typec-r1)；完整回归未完成前不标记为稳定版。
 
 第一版补丁在未连接状态的 Rp 设置路径启用 FUSB302 fixed-source toggling，复用已有 TOGDONE 的双 CC Open/Rd/Ra 分类与通知；同时缓存 `set_roles()` 的 attached 状态，禁止已连接状态走该分支，以避开历史上的 PD power-role swap 回归。补丁由构建脚本复制到 Armbian 的 `userpatches/kernel/archive/rockchip64-7.1/`，再由 `compile.sh kernel` 应用到 `drivers/usb/typec/tcpm/fusb302.c`。固定输入和实现见仓库的 `kernel/build.env`、`kernel/patches/` 及 `.github/workflows/typec-test-kernel.yml`。
 

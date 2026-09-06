@@ -31,8 +31,8 @@ same commit. Once Armbian returns successfully, the build script writes
 `KERNEL-BUILD-SUCCEEDED.txt` and copies Armbian's original packages without
 extracting or repackaging them. The only post-build checks inspect package
 metadata and tar member names for the expected kernel release, module tree, and
-EAIDK610 DTB. The same checks have been exercised against the packages from
-successful run `34013982555`.
+EAIDK610 DTB. The same checks passed in green workflow run `34017439800`, and
+its downloaded artifact was independently verified before release.
 
 Run the workflow from the repository's Actions page, or with:
 
@@ -42,3 +42,9 @@ gh workflow run typec-test-kernel.yml --repo ihexon/eaidk610-dev --ref main
 
 The workflow only builds and uploads an artifact. It never connects to the
 EAIDK610, edits `/boot`, installs packages, or reboots the board.
+
+The verified r1 packages are also published as the GitHub pre-release
+`eaidk610-typec-r1`. It remains a pre-release until the complete plug-direction,
+disconnect/VBUS, Sink/Device, and data-transfer regression matrix is finished.
+The release contains all four native Armbian packages, a bundle preserving the
+Actions artifact layout, release checksums, and the matching guarded installer.
