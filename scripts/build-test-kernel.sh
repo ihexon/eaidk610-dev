@@ -17,8 +17,9 @@ require_value() {
 
 for name in \
 	ARMBIAN_BUILD_REPOSITORY ARMBIAN_BUILD_COMMIT ARMBIAN_BOARD \
-	ARMBIAN_BRANCH LINUX_REPOSITORY LINUX_COMMIT KERNEL_CONFIG \
-	KERNEL_PATCH KERNEL_LOCALVERSION EXPECTED_KERNELRELEASE; do
+	ARMBIAN_BRANCH ARMBIAN_KERNEL_SERIES ARMBIAN_LINUXFAMILY \
+	ARMBIAN_LINUXCONFIG ARMBIAN_KERNEL_PATCH_DIR LINUX_REPOSITORY \
+	LINUX_COMMIT KERNEL_CONFIG KERNEL_PATCH EXPECTED_KERNELRELEASE; do
 	require_value "${name}"
 done
 
@@ -43,19 +44,30 @@ fi
 
 config_path="${repo_root}/${KERNEL_CONFIG}"
 patch_path="${repo_root}/${KERNEL_PATCH}"
-extension_path="${repo_root}/kernel/armbian/typec-test-localversion.sh"
+family_override_path="${repo_root}/kernel/armbian/rockchip64-family.conf"
 
-for input_path in "${config_path}" "${patch_path}" "${extension_path}"; do
+for input_path in "${config_path}" "${patch_path}" "${family_override_path}"; do
 	if [[ ! -f "${input_path}" ]]; then
 		echo "Missing build input: ${input_path}" >&2
 		exit 2
 	fi
 done
 
-if ! grep -Fq "LOCALVERSION=${KERNEL_LOCALVERSION}" "${extension_path}"; then
-	echo "Armbian LOCALVERSION extension disagrees with kernel/build.env" >&2
+grep -Fqx "declare -g LINUXFAMILY=\"${ARMBIAN_LINUXFAMILY}\"" \
+	"${family_override_path}" || {
+	echo "Armbian family override disagrees with ARMBIAN_LINUXFAMILY" >&2
 	exit 2
-fi
+}
+grep -Fqx "declare -g LINUXCONFIG=\"${ARMBIAN_LINUXCONFIG}\"" \
+	"${family_override_path}" || {
+	echo "Armbian family override disagrees with ARMBIAN_LINUXCONFIG" >&2
+	exit 2
+}
+grep -Fqx "declare -g KERNELPATCHDIR=\"${ARMBIAN_KERNEL_PATCH_DIR}\"" \
+	"${family_override_path}" || {
+	echo "Armbian family override disagrees with ARMBIAN_KERNEL_PATCH_DIR" >&2
+	exit 2
+}
 
 runner_temp="${RUNNER_TEMP}"
 work_root="${runner_temp}/eaidk610-typec-build"
@@ -83,11 +95,11 @@ if [[ "${actual_armbian_commit}" != "${ARMBIAN_BUILD_COMMIT}" ]]; then
 fi
 
 install -D -m 0644 "${config_path}" \
-	"${armbian_dir}/userpatches/config/kernel/linux-rockchip64-edge.config"
+	"${armbian_dir}/userpatches/config/kernel/${ARMBIAN_LINUXCONFIG}.config"
 install -D -m 0644 "${patch_path}" \
-	"${armbian_dir}/userpatches/kernel/archive/rockchip64-7.1/$(basename "${patch_path}")"
-install -D -m 0644 "${extension_path}" \
-	"${armbian_dir}/userpatches/extensions/typec-test-localversion.sh"
+	"${armbian_dir}/userpatches/kernel/${ARMBIAN_KERNEL_PATCH_DIR}/$(basename "${patch_path}")"
+install -D -m 0644 "${family_override_path}" \
+	"${armbian_dir}/userpatches/config/sources/families/rockchip64.conf"
 
 config_sha256="$(sha256sum "${config_path}" | awk '{print $1}')"
 patch_sha256="$(sha256sum "${patch_path}" | awk '{print $1}')"
@@ -107,7 +119,6 @@ echo "Config SHA256 ${config_sha256}; patch SHA256 ${patch_sha256}"
 		KERNEL_CONFIGURE=no \
 		KERNELSOURCE="${LINUX_REPOSITORY}" \
 		KERNELBRANCH="commit:${LINUX_COMMIT}" \
-		ENABLE_EXTENSIONS=typec-test-localversion \
 		EXTRAWIFI=no \
 		KERNEL_BTF=yes \
 		ARTIFACT_IGNORE_CACHE=yes \
@@ -117,7 +128,7 @@ echo "Config SHA256 ${config_sha256}; patch SHA256 ${patch_sha256}"
 # Armbian relaunches privileged build phases through sudo.
 sudo chown -R "$(id -u):$(id -g)" "${armbian_dir}/output"
 
-kernel_source="${armbian_dir}/cache/sources/linux-kernel-worktree/7.1__rockchip64__arm64"
+kernel_source="${armbian_dir}/cache/sources/linux-kernel-worktree/${ARMBIAN_KERNEL_SERIES}__${ARMBIAN_LINUXFAMILY}__arm64"
 if [[ ! -d "${kernel_source}" ]]; then
 	echo "Expected patched kernel source is missing: ${kernel_source}" >&2
 	exit 3
@@ -149,11 +160,11 @@ done
 
 mapfile -d '' image_debs < <(
 	find "${debs_dir}" -maxdepth 1 -type f \
-		-name 'linux-image-edge-rockchip64_*.deb' -print0 | sort -z
+		-name "linux-image-${ARMBIAN_BRANCH}-${ARMBIAN_LINUXFAMILY}_*.deb" -print0 | sort -z
 )
 mapfile -d '' dtb_debs < <(
 	find "${debs_dir}" -maxdepth 1 -type f \
-		-name 'linux-dtb-edge-rockchip64_*.deb' -print0 | sort -z
+		-name "linux-dtb-${ARMBIAN_BRANCH}-${ARMBIAN_LINUXFAMILY}_*.deb" -print0 | sort -z
 )
 if (( ${#image_debs[@]} != 1 )) || (( ${#dtb_debs[@]} != 1 )); then
 	echo "Expected exactly one image package and one DTB package" >&2
@@ -216,6 +227,9 @@ tar --zstd -cf "${package_dir}/dtbs-${kernelrelease}.tar.zst" \
 	printf 'debian_arch=%s\n' "$(dpkg --print-architecture)"
 	printf 'armbian_repository=%s\n' "${ARMBIAN_BUILD_REPOSITORY}"
 	printf 'armbian_commit=%s\n' "${actual_armbian_commit}"
+	printf 'armbian_linuxfamily=%s\n' "${ARMBIAN_LINUXFAMILY}"
+	printf 'armbian_linuxconfig=%s\n' "${ARMBIAN_LINUXCONFIG}"
+	printf 'armbian_kernel_patch_dir=%s\n' "${ARMBIAN_KERNEL_PATCH_DIR}"
 	printf 'linux_repository=%s\n' "${LINUX_REPOSITORY}"
 	printf 'linux_commit=%s\n' "${actual_linux_commit}"
 	printf 'kernelrelease=%s\n' "${kernelrelease}"

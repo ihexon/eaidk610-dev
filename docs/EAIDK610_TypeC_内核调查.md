@@ -8,9 +8,9 @@
 
 现有日志、基础源码以及板上已安装内核镜像的反汇编，共同指向 FUSB302 驱动的软件 Try.Source CC 更新路径不完整。当前不能把临时 Source-only 重选成功视为自动角色选择已修复。
 
-不需要为了开启普通日志先重编译：运行内核已经开启 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。现已针对 CC 测量/缓存/通知路径制作第一版小补丁和定点日志，并准备由 GitHub Actions 原生 ARM64 runner 编译同配置测试内核。尚未完成 CI 编译和补丁实机验证，不能断言已经排除全部时序或电气问题。
+不需要为了开启普通日志先重编译：运行内核已经开启 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。现已针对 CC 测量/缓存/通知路径制作第一版小补丁和定点日志。GitHub Actions run `34000886605` 已确认 Armbian 将该补丁作为第 1/228 项应用，完整内核编译和模块安装成功；失败发生在后续 Debian 打包命名阶段，尚未产生可部署产物。补丁仍未经过实机验证，不能断言已经排除全部时序或电气问题。
 
-第一版补丁在未连接状态的 Rp 设置路径启用 FUSB302 fixed-source toggling，复用已有 TOGDONE 的双 CC Open/Rd/Ra 分类与通知；同时缓存 `set_roles()` 的 attached 状态，禁止已连接状态走该分支，以避开历史上的 PD power-role swap 回归。固定输入和实现见仓库的 `kernel/build.env`、`kernel/patches/` 及 `.github/workflows/typec-test-kernel.yml`。
+第一版补丁在未连接状态的 Rp 设置路径启用 FUSB302 fixed-source toggling，复用已有 TOGDONE 的双 CC Open/Rd/Ra 分类与通知；同时缓存 `set_roles()` 的 attached 状态，禁止已连接状态走该分支，以避开历史上的 PD power-role swap 回归。补丁由构建脚本复制到 Armbian 的 `userpatches/kernel/archive/rockchip64-7.1/`，再由 `compile.sh kernel` 应用到 `drivers/usb/typec/tcpm/fusb302.c`。固定输入和实现见仓库的 `kernel/build.env`、`kernel/patches/` 及 `.github/workflows/typec-test-kernel.yml`。
 
 ## 版本和配置
 
@@ -120,7 +120,9 @@ aarch64-linux-gnu-objdump -D -b binary -m aarch64 \
 
 ## 是否需要重编译，以及下一步
 
-现在不需要用户先重编译来开启日志。修复阶段保持相同 Linux 基础版本、板级 overlay 和供电参数，只改 FUSB302 的 CC 更新路径；完整内核编译只在 GitHub Actions 的 ARM64 runner 进行，Docker 容器不承担完整编译。
+现在不需要用户先重编译来开启日志。修复阶段保持相同 Linux 基础版本、板级 overlay 和供电参数，只改 FUSB302 的 CC 更新路径；完整内核编译只在 GitHub Actions 的 ARM64 runner 进行。当前本地 Docker 容器不承担完整编译；Actions 上的 Armbian ARM64 构建容器属于该 runner 内的标准构建层。
+
+第一次完整编译已给出两个重要证据：补丁确实进入目标源码；内核与模块生成的版本均为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`。该次失败不是 C 编译错误，而是原自定义 `LOCALVERSION` 扩展只改变内核 Make 输出，Armbian 打包器仍按 `7.1.8-edge-rockchip64` 查找文件。后续构建改用 `userpatches/config/sources/families/rockchip64.conf` 覆盖测试用 `LINUXFAMILY`，使 Make、模块目录、Debian 包路径与包名从同一变量生成。
 
 定点日志应包括：
 

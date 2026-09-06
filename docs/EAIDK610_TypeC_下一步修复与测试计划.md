@@ -6,9 +6,9 @@
 
 下一步应修复 FUSB302 驱动的软件 Try.Source CC 状态更新路径，用 GitHub Actions 构建测试内核，再安装到 `ihexon@192.168.1.166` 做实机对照测试。保留当前已经可用的 Type-C overlay，不继续通过修改相同 DT 属性排查这个内核问题。
 
-顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成初稿）→ ARM64 CI 编译与检查 → 建立远端回退入口 → 安装测试内核 → 自动角色选择验收 → 整理正式补丁。
+顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成初稿）→ ARM64 CI 编译与检查（补丁编译已通过，正在修复打包）→ 建立远端回退入口 → 安装测试内核 → 自动角色选择验收 → 整理正式补丁。
 
-本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁初稿和手动 workflow 已准备；完整内核编译必须交给 GitHub Actions 的 ARM64 runner。尚未完成 CI 结果确认、测试内核安装或实机验证，测试板启动配置未修改。
+本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。第一次有效 Actions 构建确认补丁应用、内核编译和模块安装成功，但 Debian 打包因测试版本命名没有同步给 Armbian 打包器而失败；已改用测试 `LINUXFAMILY` 统一名称，等待重新构建。尚未取得可部署产物，也未安装或实机验证，测试板启动配置未修改。
 
 ## 一、当前状态与不可突破的边界
 
@@ -19,10 +19,10 @@
 | 已验证功能 | Android 在正确 Source/Host 角色下能充电、传数据，已观察到 USB2 480 Mbps 枚举 |
 | 未完成事项 | 自动 Try.Source 仍可能失败；USB3、自动双向插拔和全面回归尚未验收 |
 | 远端最后一次检查 | 用户手动设置了 Source-only；实际为 Source/Host，手机仍枚举 |
-| 源码仓库 | `https://github.com/ihexon/eaidk610-dev`；容器内 Git 工作树为 `/home/ihexon/eaidk610-dev/eaidk610-dev`，`main` 尚无提交，远程为空 |
+| 源码仓库 | `https://github.com/ihexon/eaidk610-dev`；容器内 Git 工作树为 `/home/ihexon/eaidk610-dev/eaidk610-dev`，通过 HTTPS 推送到 `main` |
 | GitHub CLI | 已安装；`github.com` 只保留并激活 `ihexon`，仓库权限为 `ADMIN`，Git 通过 HTTPS 由 `gh` 提供凭据 |
 | Git 提交身份 | 仓库级配置为 `ihexon <zzheasy@gmail.com>` |
-| 内核工程 | 补丁初稿、固定输入、构建脚本和 workflow 已在本地 Git 工作树创建；等待提交、推送及 ARM64 Actions 构建 |
+| 内核工程 | 补丁、固定输入、构建脚本和 workflow 已提交并推送；run `34000886605` 编译成功、打包失败，打包命名修正等待复跑 |
 
 必须遵守：
 
@@ -51,7 +51,7 @@ git -C /home/ihexon/eaidk610-dev/eaidk610-dev ls-remote origin
 
 已删除 Docker 容器内其他账号的本地 `gh` 登录信息，只保留 `ihexon`。`origin` 为 `https://github.com/ihexon/eaidk610-dev.git`，`gh auth setup-git` 已配置 Git 凭据帮助器；不再依赖 GitHub SSH key 或临时 `SSH_AUTH_SOCK`。空仓库的 `ls-remote` 成功时可以没有 refs，不能因无输出误判为连接失败。
 
-完成条件已满足：API 身份为 `ihexon`，对仓库有 `ADMIN` 权限，HTTPS Git 远程访问正常，提交作者为 `ihexon <zzheasy@gmail.com>`。首个 workflow 提交并推送到默认分支后，再使用 `workflow_dispatch` 手动触发。
+完成条件已满足：API 身份为 `ihexon`，对仓库有 `ADMIN` 权限，HTTPS Git 远程访问正常，提交作者为 `ihexon <zzheasy@gmail.com>`。workflow 已提交到默认分支，并通过 `workflow_dispatch` 手动触发。
 
 ## 三、固定构建基线，不同时升级内核
 
@@ -107,7 +107,14 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 
 定点日志复用 FUSB302/TCPM 的 debugfs 环形日志，并新增 CC 请求时的极性/attached 状态、未连接 Source toggling 启动以及 set_roles 的 attached 状态。现有 TOGDONE 测量路径已经记录 STATUS0、阈值测量和最终 CC 分类，不新增持续高频 printk。
 
-补丁在固定 Linux 基础源码上通过 `git diff --check`。Docker 内尝试过相关对象的交叉编译准备，但因容器缺少 `bc` 在生成阶段停止，尚未进入 `fusb302.o` 编译，因此不能把它记为编译通过或补丁失败。按当前约束不在 Docker 完整编译；完整 Image/模块/DTB 编译交给 ARM64 Actions。实机仍需覆盖 Open、Ra、Rd、负载已存在但无新边沿、断开、I2C 错误和角色变化；CI 绿色不能替代电气和时序测试。
+补丁在固定 Linux 基础源码上通过 `git diff --check`。本地 Docker 内尝试过相关对象的交叉编译准备，但因容器缺少 `bc` 在生成阶段停止，尚未进入 `fusb302.o` 编译，因此该次本地尝试没有结论。Actions run `34000886605` 随后已完成包含本补丁的完整内核编译和模块安装，证明补丁可在固定 ARM64 构建基线上编译；实机仍需覆盖 Open、Ra、Rd、负载已存在但无新边沿、断开、I2C 错误和角色变化，CI 绿色不能替代电气和时序测试。
+
+### 4.1 GitHub Actions 构建记录
+
+- run `34000659001` 被提前取消，没有形成编译结论；取消不是代码失败。
+- run [`34000886605`](https://github.com/ihexon/eaidk610-dev/actions/runs/34000886605) 使用外层 `ubuntu-24.04-arm` runner 和内层 Armbian ARM64 Docker 构建环境。日志显示补丁以 `001/228` 应用到 `fusb302.c`，内核在 2247 秒内完成编译，并将模块安装到 `lib/modules/7.1.8-edge-rockchip64-eaidk610-typec-r1`。
+- 该 run 随后在 Debian 打包阶段失败：打包器按默认 family 查找 `image/boot/vmlinu*-7.1.8-edge-rockchip64`，而内核 Make 已生成带 `-eaidk610-typec-r1` 的文件。根因是原 `typec-test-localversion` 扩展只覆盖 Make 的 `LOCALVERSION`，没有同步改变 Armbian 的 `kernel_version_family`。
+- 修正方案删除该扩展，改为在 `userpatches/config/sources/families/rockchip64.conf` 中设置测试专用 `LINUXFAMILY=rockchip64-eaidk610-typec-r1`，同时显式保留 `LINUXCONFIG=linux-rockchip64-edge` 和 `KERNELPATCHDIR=archive/rockchip64-7.1`。固定 Armbian 提交的 Make、模块安装、Debian 路径和包名都使用该 family，因此名称将保持一致。
 
 ## 五、仓库与 workflow 交付内容
 
@@ -119,7 +126,7 @@ eaidk610-dev/
 ├── scripts/build-test-kernel.sh
 ├── kernel/build.env
 ├── kernel/config-7.1.8-edge-rockchip64
-├── kernel/armbian/typec-test-localversion.sh
+├── kernel/armbian/rockchip64-family.conf
 ├── kernel/patches/0001-usb-typec-fusb302-detect-unattached-source-connectio.patch
 ├── kernel/README.md
 └── .gitignore
@@ -133,7 +140,7 @@ workflow 要求：
 - 使用 GitHub 托管的 ARM64 `ubuntu-24.04-arm`，不把本地 Docker 执行容器或 `.166` 注册为自托管 runner；workflow 先在宿主核对 `uname -m=aarch64` 和 Debian `arm64` 架构。Armbian 可在该 ARM64 runner 内启动其 ARM64 构建容器，日志中的 `🐳` 和 OCI manifest 下载即来自这一层；完整编译仍全部发生在 GitHub Actions。[runner 说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
 - checkout、artifact 等第三方 action 固定到核实过的提交；权限从 `contents: read` 开始，不授予无关写权限。
 - Linux、Armbian 补丁集、配置和补丁均可追溯；禁止静默换到 latest 内核。
-- 设置独立 `KERNELRELEASE`，例如 `7.1.8-edge-rockchip64-eaidk610-typec-r1`；最终以构建输出值为准。
+- 通过测试专用 Armbian `LINUXFAMILY` 设置独立 `KERNELRELEASE` `7.1.8-edge-rockchip64-eaidk610-typec-r1`，使内核、模块目录、Debian 路径和包名一致；最终仍以构建输出值为准。
 - 使用固定 Armbian `rockchip64-7.1` 补丁集和板上配置，完整编译 Image、模块与 DTB；解开生成的 Debian 包核对模块目录和唯一 kernelrelease 后再打包。失败时也上传构建日志和诊断信息。
 - Artifact 至少包含 Image、匹配模块、配置、System.map、构建清单、补丁、SHA256SUMS 和构建日志；建议命名 `eaidk610-typec-test`。
 - 构建清单记录仓库提交、Linux/Armbian 提交、工具链、补丁哈希、配置差异、kernelrelease、run ID。
@@ -294,4 +301,4 @@ sudo sync
 
 ## 九、恢复工作时的第一件事
 
-恢复工作时先查看固定提交对应的 ARM64 workflow run 及 artifact；若构建失败，先把失败阶段和修订同步到本文。构建成功后校验 SHA256 和构建清单，再进入 `.166` 的串口回退检查。当前不用用户先重编译一个“只开普通日志”的内核；安装、重启和实测仍应围绕上述可验证的小范围改动推进。
+恢复工作时先查看打包命名修正所对应的 ARM64 workflow run 及 artifact；若仍失败，先把具体失败阶段和下一次修订同步到本文。构建成功后校验 SHA256 和构建清单，再进入 `.166` 的串口回退检查。当前不用用户先重编译一个“只开普通日志”的内核；安装、重启和实测仍应围绕上述可验证的小范围改动推进。
