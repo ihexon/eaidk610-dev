@@ -4,21 +4,21 @@
 
 ## 结论与执行顺序
 
-下一步应修复 FUSB302 驱动的软件 Try.Source CC 状态更新路径，用 GitHub Actions 构建测试内核，再安装到 `ihexon@192.168.1.166` 做实机对照测试。保留当前已经可用的 Type-C overlay，不继续通过修改相同 DT 属性排查这个内核问题。
+FUSB302 软件 Try.Source CC 状态更新补丁已经用 GitHub Actions 构建，并安装到 `ihexon@192.168.1.166`。测试板已成功重启进入独立版本 `7.1.8-edge-rockchip64-eaidk610-typec-r1`；首轮带手机反向插入启动在 `port_type=dual` 下自动进入 Source/Host、枚举手机，补丁定点日志证明新路径完成 Rd 分类并通知 TCPM。继续保留现有 Type-C overlay，不修改相同 DT 属性。
 
-顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成）→ ARM64 内核编译与打包（已完成）→ 建立远端回退入口 → 安装测试内核 → 自动角色选择验收 → 整理正式补丁。
+顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成）→ ARM64 内核编译与打包（已完成）→ 建立远端回退入口（已完成）→ 安装并启动测试内核（已完成）→ 自动角色选择首轮验收（已通过）→ 正反插与角色切换回归 → 整理正式补丁。
 
-本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。Actions run `34013982555` 已完成补丁应用、内核编译、模块安装及四类 Debian 包生成，下载 artifact 的全部 SHA256 校验通过；workflow 在其后的非关键编译器元数据解析处标红。按当前验收标准，内核编译任务已经完成；尚未安装或实机验证，测试板启动配置未修改。
+本文同时记录当前执行进度。容器内的 GitHub 身份、HTTPS 仓库访问、固定构建输入、FUSB302 补丁和手动 workflow 已准备并推送。Actions run `34013982555` 完成补丁应用、内核编译、模块安装及四类 Debian 包生成，下载 artifact 的全部 SHA256 校验通过；workflow 在其后的非关键编译器元数据解析处标红。image 与 DTB 包已经校验、安装并实机启动；首轮日志显示 `start unattached SRC toggling` 后正确测得 `Ra/Rd`，TCPM 随即进入 `SRC_ATTACHED` 和 `SRC_READY`。全面拔插与双角色回归尚未完成。
 
 ## 一、当前状态与不可突破的边界
 
 | 项目 | 当前状态 |
 | --- | --- |
 | 执行端 | Docker 容器，工作区 `/home/ihexon/eaidk610-dev`；不是 EAIDK610，不承载板级 `/boot`、overlay 或 Type-C 硬件 |
-| 测试板 | `ihexon@192.168.1.166`，同版内核；当前 overlay 已加载 |
-| 已验证功能 | Android 在正确 Source/Host 角色下能充电、传数据，已观察到 USB2 480 Mbps 枚举 |
-| 未完成事项 | 自动 Try.Source 仍可能失败；USB3、自动双向插拔和全面回归尚未验收 |
-| 远端最后一次检查 | 用户手动设置了 Source-only；实际为 Source/Host，手机仍枚举 |
+| 测试板 | `ihexon@192.168.1.166`；运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，原内核仍保留，overlay 已加载 |
+| 已验证功能 | 带手机反向插入启动；从 `port_type=dual` 自动 Try.Source 到 Source/Host；OnePlus 8T 以 USB2 480 Mbps 枚举 |
+| 未完成事项 | 正插、正反方向多次拔插、连接电脑的 Sink/Device、实际文件复制、拔线/VBUS 清理、USB3 和长期回归 |
+| 远端最后一次检查 | 自动角色为 Source/Host，`orientation=reverse`、partner 存在，手机为 `18d1:4ee8`；Type-C 相关错误数为 0 |
 | 源码仓库 | `https://github.com/ihexon/eaidk610-dev`；容器内 Git 工作树为 `/home/ihexon/eaidk610-dev/eaidk610-dev`，通过 HTTPS 推送到 `main` |
 | GitHub CLI | 已安装；`github.com` 只保留并激活 `ihexon`，仓库权限为 `ADMIN`，Git 通过 HTTPS 由 `gh` 提供凭据 |
 | Git 提交身份 | 仓库级配置为 `ihexon <zzheasy@gmail.com>` |
@@ -85,6 +85,23 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 
 配置中 FUSB302/TCPM 为内建 `=y`，本次按构建完整测试内核处理。Image、模块、配置和 initramfs 必须匹配，不能用其它版本 headers 或复制旧 `.ko` 代替。
 
+### 3.1 Armbian 框架与传统 make 的边界
+
+当前 r1 的确由 Armbian build 驱动：`scripts/build-test-kernel.sh` 固定 build 提交后执行 `./compile.sh kernel`。框架负责取得固定 Linux 源码、按 rockchip64-7.1 的既定顺序应用补丁、放入板上配置、执行内核/模块/DTB 安装并生成 Debian 包。run `34013982555` 的日志显示总计应用 228 项，其中第 1 项是本仓库 FUSB302 补丁，其余为 Armbian rockchip64 补丁集；该补丁集明确包含 `typec-extcon` bridge、TCPM 修正、Rockchip USB PHY/charger detection 等改动。因此不能从纯上游 `25c76bea...` 加一份 FUSB302 补丁就直接替代当前内核。
+
+但 Armbian 框架不是运行内核或部署格式的硬依赖。只要最终源码树等价，GitHub ARM64 runner 完全可以用传统 Kbuild：
+
+```sh
+make olddefconfig
+make -j"$(nproc)" Image modules dtbs
+make INSTALL_MOD_PATH="$stage" modules_install
+make INSTALL_DTBS_PATH="$stage/boot/dtb-$kernelrelease" dtbs_install
+```
+
+建议后续采用“Armbian 只准备固定源码与补丁，传统 make 负责构建”的混合路线，或先把 Armbian 生成的完整补丁顺序固定成可审计清单；然后将 Image、config、System.map、模块和 DTB 打成带 SHA256/manifest 的 tar.zst，并随附目标校验、备份、initramfs、`uInitrd` 和原子软链接切换的 installer 脚本。这样可以去掉 Debian 包名/maintainer script 相关复杂度，又不会丢失 Armbian edge 的板级代码。
+
+收益需要按日志估算：r1 的内核编译为 2274 秒，Debian 打包只有 59 秒。仅把 `.deb` 改为 tgz 主要简化部署，节省约一分钟，不会把完整编译从约 38 分钟降到几分钟。若目标是显著加速，优先缓存已打补丁源码、工具链和 ccache，后续只在补丁/配置变化时做增量构建。已经成功启动的 r1 不为更换产物格式重复构建；此路线用于下一版内核迭代。
+
 ## 四、驱动补丁的具体工作
 
 目标文件首先是 `drivers/usb/typec/tcpm/fusb302.c`。只有实测证据要求时才扩大到 `tcpm.c`。
@@ -127,6 +144,8 @@ ssh ihexon@192.168.1.166 'dpkg-query -s linux-image-edge-rockchip64'
 eaidk610-dev/
 ├── .github/workflows/typec-test-kernel.yml
 ├── scripts/build-test-kernel.sh
+├── scripts/install-test-kernel-on-board.sh
+├── scripts/check-typec-on-board.sh
 ├── kernel/build.env
 ├── kernel/config-7.1.8-edge-rockchip64
 ├── kernel/armbian/rockchip64-family.conf
@@ -135,7 +154,7 @@ eaidk610-dev/
 └── .gitignore
 ```
 
-不要提交完整 Linux 源码树、编译输出、系统镜像和凭据。构建步骤写入 workflow；复杂安装操作仍可使用临时脚本 scp 到 `.166` 执行，执行后删除，不在板上保留常驻修复服务。
+不要提交完整 Linux 源码树、编译输出、系统镜像和凭据。构建步骤写入 workflow；复杂安装和采集操作使用仓库内经语法检查的脚本，scp 到 `.166` 后一次执行，不在板上安装常驻修复服务。两个脚本不包含 sudo 密码、SSH 凭据或 GitHub token。
 
 workflow 要求：
 
@@ -169,76 +188,59 @@ gh run download "$typec_run_id" --repo ihexon/eaidk610-dev \
 
 在下载目录按实际产物结构执行 `sha256sum -c SHA256SUMS`，审查清单及归档路径。Artifact 下载使用当前 `ihexon` 的 `gh` API 登录。[触发说明](https://cli.github.com/manual/gh_workflow_run)、[下载说明](https://cli.github.com/manual/gh_run_download)、[Artifact API](https://docs.github.com/en/rest/actions/artifacts#download-an-artifact)
 
-## 六、只向 .166 安装测试内核
+## 六、只向 .166 安装测试内核（已完成）
 
-### 6.1 安装前的门槛
+### 6.1 产物、安装和回退入口
 
-先检查 `.166` 的版本、空间、当前启动配置和源文件哈希。确认串口可查看 U-Boot、能够中断自动启动，并已经明确如何从旧配置启动。串口使用 `1500000 8N1`，端口名按实际 USB 串口确认。
-
-如果没有可用的串口/离线恢复办法，不进入远端重启测试。SSH 断开后不能依赖 SSH 本身恢复一个启动失败的内核。
-
-远端之前的旧备份已清理，本次测试需要重新保存“一份当前可用配置”，不能使用旧 `.before-typec-overlay` 路径假定文件仍存在：
-
-```sh
-ssh ihexon@192.168.1.166
-uname -r
-df -h / /boot
-cat /boot/extlinux/extlinux.conf
-sudo test ! -e /boot/extlinux/extlinux.conf.before-typec-kernel
-```
-
-最后一条成功且前述检查通过后，才保存该回退配置：
-
-```sh
-sudo cp -p /boot/extlinux/extlinux.conf \
-  /boot/extlinux/extlinux.conf.before-typec-kernel
-```
-
-已有同名备份时先检查内容，不覆盖。保留当前旧内核 Image、uInitrd、System.map、config 和 `/lib/modules/7.1.8-edge-rockchip64`，不卸载原软件包。
-
-### 6.2 文件布局与切换
-
-建议测试产物使用独立路径：
+从 run `34013982555` 下载 artifact 后，只选用 image 和 DTB 软件包；headers、libc-dev 未上传也未安装。上传前后核对的 SHA-256 为：
 
 ```text
-/boot/typec-test-r1/Image
-/boot/typec-test-r1/initrd.img
-/boot/typec-test-r1/uInitrd
-/boot/config-<实际测试 kernelrelease>
-/boot/System.map-<实际测试 kernelrelease>
-/lib/modules/<实际测试 kernelrelease>/
+fb80950b87cbd85a212ed2425c5b6bc2bff234c54ac608682a49b35a711be39b  linux-image-edge-rockchip64-eaidk610-typec-r1_*.deb
+c38792402dcad9aa00527c2ab487203183cfb8e860e6f8ca62e2f88643a4db2a  linux-dtb-edge-rockchip64-eaidk610-typec-r1_*.deb
 ```
 
-先普通用户解包并检查路径，再由临时部署脚本逐项安装；不把未经检查的归档直接解压到 `/`。脚本须核对目标机器、旧内核版本、可用空间、哈希和配置，失败时停止并恢复启动配置。
-
-模块安装完成后，在 `.166` 生成匹配的 initramfs，不能复用旧内核的 uInitrd。下面仅为将来部署脚本的核心命令，前提是该版本 Image、config、模块和目标目录已经安装、核对：
-
-```sh
-typec_test_kernel=7.1.8-edge-rockchip64-eaidk610-typec-r1
-sudo depmod -a "$typec_test_kernel"
-sudo /usr/sbin/mkinitramfs -c gzip \
-  -o /boot/typec-test-r1/initrd.img "$typec_test_kernel"
-sudo mkimage -A arm64 -O linux -T ramdisk -C gzip \
-  -n 'uInitrd typec-r1' -d /boot/typec-test-r1/initrd.img \
-  /boot/typec-test-r1/uInitrd
-```
-
-脚本还需检查 initramfs 内容和镜像头，确认模块加载所需信息齐全。直接生成指定文件，不调用可能重写全局 Image/uInitrd 链接的自动升级步骤。
-
-仅把 `.166` 当前 `LABEL Armbian` 内的两条路径切到：
+安装前核对目标主机为 `armbian`、运行版本为 `7.1.8-edge-rockchip64`、root 文件系统有约 12 GiB 可用，并保存 extlinux 与启动链接状态。两个测试包有独立包名，因此没有覆盖或卸载原 `linux-image-edge-rockchip64`；以下原版恢复文件仍在：
 
 ```text
-  LINUX /boot/typec-test-r1/Image
-  INITRD /boot/typec-test-r1/uInitrd
+/boot/vmlinuz-7.1.8-edge-rockchip64
+/boot/uInitrd-7.1.8-edge-rockchip64
+/boot/dtb-7.1.8-edge-rockchip64/
+/lib/modules/7.1.8-edge-rockchip64/
 ```
 
-`FDT`、`FDTOVERLAYS`、`APPEND` 和 root UUID 全部保留原值。Docker 容器不是开发板；所有 extlinux 和 `/boot` 操作都必须通过已核对目标的 `.166` SSH 会话执行。
+实际部署使用 `scripts/install-test-kernel-on-board.sh`。复杂操作先写成完整脚本，经 `bash -n` 和可用时的 ShellCheck 检查，再 scp 到 `/home/ihexon/eaidk610-typec-test/` 由 sudo 一次执行；密码只通过交互式 sudo 输入，未写入脚本、命令参数、环境、文件或日志。
 
-用临时文件加 rename 更新配置，核对差异确实只有预期路径，执行 `sync`。通知用户即将中断连接，在串口已就绪时才执行 `.166` 的 `sudo reboot`。
+Armbian image 包成功生成 `/boot/initrd.img-7.1.8-edge-rockchip64-eaidk610-typec-r1`，但目标系统没有负责同步生成新 `uInitrd` 的 initramfs post-update hook。首次部署检查因此在重启前停止。正式脚本随后用目标版本 initrd 生成 U-Boot legacy ramdisk，验证 64 字节 header 后的 payload 与 initrd 哈希完全一致，再原子替换目标 `uInitrd`。这保证没有复用旧内核 initramfs。
+
+启动配置本身未改写，仍只有一个 `LABEL Armbian`：
+
+```text
+LINUX /boot/Image
+INITRD /boot/uInitrd
+FDT /boot/dtb/rockchip/rk3399-eaidk-610.dtb
+FDTOVERLAYS /boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo
+```
+
+三个软链接在重启前均核对为测试版本，base DTB 与 overlay 通过 `fdtoverlay` 合并检查；备份保存在 `/boot/eaidk610-typec-backup-20260906-142239`。通知用户后执行重启，SSH 正常断开并在约 22 秒后恢复；boot ID 从 `f06223cb-8c8b-4e85-b7ac-af69d1fc7f9a` 变为 `8b24b245-36ad-49f0-a8f2-fb7221506077`，确认不是旧会话或未完成的重启。
+
+### 6.2 当前运行状态
+
+```text
+uname -r: 7.1.8-edge-rockchip64-eaidk610-typec-r1
+Image -> vmlinuz-7.1.8-edge-rockchip64-eaidk610-typec-r1
+uInitrd -> uInitrd-7.1.8-edge-rockchip64-eaidk610-typec-r1
+dtb -> dtb-7.1.8-edge-rockchip64-eaidk610-typec-r1
+```
+
+`dpkg --audit` 无输出，image 与 DTB 测试包状态均为 installed。`typec_extcon` 已加载，文件来自 `/lib/modules/7.1.8-edge-rockchip64-eaidk610-typec-r1/kernel/drivers/usb/typec/typec-extcon.ko`。测试板已证明能够从完整的新 Image、initramfs、模块目录、DTB 和原 overlay 启动；不再需要为相同补丁重复耗时的内核构建。
 
 ## 七、验收方法与通过标准
 
-重启后先验证进入正确测试版本、overlay 仍然加载、桥接模块来自匹配的模块目录，再测试功能：
+首次重启验收已完成。手机在板端反向插入并带线启动，期间没有手动写 sysfs：测试内核从 `port_type=dual` 自动进入 Source/Host，`orientation=reverse`、`power_operation_mode=1.5A`、partner 存在；OnePlus 8T 以 `18d1:4ee8` 在 USB2 480 Mbps 下枚举。
+
+debugfs 给出了修复路径的直接证据：开机 4.485062 秒记录 `start unattached SRC toggling for Rp-1.5`，随后测得 `cc1=Ra, cc2=Rd` 并通知 TCPM；TCPM 从 `SRC_TRY_WAIT` 进入 `SRC_TRY_DEBOUNCE`、`SRC_ATTACHED`，最后到 `SRC_READY`。本次启动未发现 FUSB302/TCPM/Type-C warning/error。完整日志在板上 `/home/ihexon/typec-test-log-8b24b245-36ad-49f0-a8f2-fb7221506077`，采集脚本为 `scripts/check-typec-on-board.sh`。
+
+以上只完成“带手机启动、反向、一次”的首轮场景，不能替代下面的完整验收。后续每轮仍先验证运行版本、overlay 和实际角色：
 
 ```sh
 uname -r
@@ -268,35 +270,38 @@ echo dual | sudo tee /sys/class/typec/port0/port_type
 | 拔线与空闲 | 每轮检查 | partner 消失，VBUS 输出正确关闭，无工作项持续重试 |
 | 错误与资源 | 每组测试后检查 | 无 I2C 错误洪泛、GPIO 冲突、WARN/Oops、模块版本错误 |
 
+当前进度：带手机反向启动 1 次通过，错误与资源的首轮检查通过；表内其余次数和方向仍未执行。手机是否显示充电、实际文件复制、拔线后的 VBUS 关闭必须结合用户现场观察，不能只依据 SSH/sysfs 推断。
+
 电脑是否枚举具体 USB 功能还依赖有效 gadget，不能把“没有配置 gadget”误判为角色切换失败。USB3 属于另一个验收维度；仅看到 480 Mbps 不足以宣称 USB3 已验证。
 
-每轮短时间复现后立即保存 TCPM/FUSB302 日志，由一个采集程序读取，避免相互消耗环形日志。下面在 `.166` 执行，日志存入用户目录，便于 scp：
+每轮短时间复现后立即保存 TCPM/FUSB302 日志，由一个采集程序读取，避免相互消耗环形日志。复杂采集操作使用脚本 scp 到 `.166` 后一次执行：
 
 ```sh
-typec_log_dir=$(mktemp -d /home/ihexon/typec-test-log.XXXXXX)
-uname -a > "$typec_log_dir/uname.txt"
-sudo cat /sys/kernel/debug/usb/tcpm-4-0022/log > "$typec_log_dir/tcpm.log"
-sudo cat /sys/kernel/debug/usb/fusb302-4-0022/log > "$typec_log_dir/fusb302.log"
-sudo dmesg > "$typec_log_dir/dmesg.log"
-lsusb -t > "$typec_log_dir/lsusb-tree.txt"
+scp scripts/check-typec-on-board.sh \
+  ihexon@192.168.1.166:/home/ihexon/eaidk610-typec-test/
+ssh -t ihexon@192.168.1.166 \
+  'sudo /home/ihexon/eaidk610-typec-test/check-typec-on-board.sh'
 ```
 
 记录每轮插拔方向、设备/线缆、用户操作、充电表现和成败。修复后的关键证据应是有效 CC 分类及通知进入 TCPM，随后正常 Source 建连；不能仅以 `echo` 返回成功、GPIO 为高或 CI 绿色为结论。
 
 ## 八、失败回退与清理
 
-若测试内核可 SSH 但出现回归，在 `.166` 恢复保存的 extlinux 配置，核对其指向旧 Image/uInitrd 后再重启：
+若测试内核可 SSH 但出现回归，不需要改写内容未变的 extlinux；在 `.166` 将三个明确的软链接恢复到保留的旧版本，核对后再重启：
 
 ```sh
-sudo cp -p /boot/extlinux/extlinux.conf.before-typec-kernel \
-  /boot/extlinux/extlinux.conf
-cat /boot/extlinux/extlinux.conf
+sudo ln -sfn vmlinuz-7.1.8-edge-rockchip64 /boot/Image
+sudo ln -sfn uInitrd-7.1.8-edge-rockchip64 /boot/uInitrd
+sudo ln -sfn dtb-7.1.8-edge-rockchip64 /boot/dtb
+readlink /boot/Image
+readlink /boot/uInitrd
+readlink /boot/dtb
 sudo sync
 ```
 
 本段不附无条件重启命令；确认目标是 `.166`、日志已保存和串口就绪后再重启。若 SSH 无法进入，按安装前已经验证的 U-Boot 手动启动旧配置或离线恢复方法操作。
 
-每次迭代保留一个可用旧内核和当前测试版本，部署/采集脚本执行后删除。清理失败版本前，确认它既不是 `uname -r` 的运行版本，也不被启动配置或任何软链接引用，再按明确版本目录删除，不能使用宽泛的 `/boot/*` 或 `/lib/modules/*` 删除命令。
+当前不回退也不卸载：测试内核已经正常启动，旧内核作为恢复版本继续保留。清理失败版本前，确认它既不是 `uname -r` 的运行版本，也不被启动配置或任何软链接引用，再按明确版本目录删除，不能使用宽泛的 `/boot/*` 或 `/lib/modules/*` 删除命令。
 
 最后交付：修复补丁、固定构建输入、workflow、可下载产物、校验清单、实测记录与回退说明。若全部验收通过，再评估去掉多余诊断日志并整理上游提交；若失败，只报告具体未通过项，继续围绕证据迭代。
 
@@ -304,4 +309,4 @@ sudo sync
 
 ## 九、恢复工作时的第一件事
 
-恢复工作时使用 run `34013982555` 的 artifact；其 SHA256 和包内 kernelrelease 已核验。下一步若要实机测试，先进入 `.166` 的串口/离线回退检查，再安装测试内核。当前不用再重复编译一个“只开普通日志”的内核；安装、重启和实测仍应围绕上述可验证的小范围改动推进。
+测试内核已安装并启动，下一步不再下载或重建 r1。恢复工作时先确认 `.166` 仍运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，然后在用户配合下完成正插、正反方向多次拔插、拔线/VBUS、电脑 Sink/Device 和实际文件传输测试，每组用 `scripts/check-typec-on-board.sh` 留证。若需要 r2，可改用“Armbian 固定补丁准备 + 传统 make + tar.zst/installer”的构建交付方式；仍须保留完整 rockchip64 edge 补丁集。

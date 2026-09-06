@@ -1,26 +1,62 @@
 # EAIDK-610 Type-C 自动角色选择：内核调查
 
-日期：2026-09-06。对象：`ihexon@192.168.1.166`。本轮仅诊断，未修改 DTB/overlay、内核、启动配置、角色或 GPIO，未重启。
+日期：2026-09-06。对象：`ihexon@192.168.1.166`。初始调查阶段只做诊断；同日后续阶段已安装并启动测试内核，实机结果另列如下。overlay、供电声明、GPIO 和 extlinux 内容均未改动。
 
 后续执行环境于 2026-09-06 更新为 Docker 容器，工作区为 `/home/ihexon/eaidk610-dev`；该容器不是 EAIDK610，也不再把原本的 `eaidk02` 当作执行端。容器只用于源码、GitHub Actions 和远程部署组织；本报告的板上证据和结论仍指向 `.166`，不因执行端变更而改变。所有 `/boot`、`/sys/class/typec`、debugfs、角色切换和重启命令都只能在明确连接 `.166` 后执行，不得对容器本身执行。
 
 ## 结论
 
-现有日志、基础源码以及板上已安装内核镜像的反汇编，共同指向 FUSB302 驱动的软件 Try.Source CC 更新路径不完整。当前不能把临时 Source-only 重选成功视为自动角色选择已修复。
+原版内核日志、基础源码以及板上原版内核镜像的反汇编，共同指向 FUSB302 驱动的软件 Try.Source CC 更新路径不完整。测试内核已在 `port_type=dual`、手机带线启动的场景中自动进入 Source/Host 并完成 USB 枚举，驱动日志也证明新增路径实际执行并把 Rd 更新通知给 TCPM；这比临时 Source-only 重选提供了有效的实机修复证据。
 
-不需要为了开启普通日志先重编译：运行内核已经开启 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。现已针对 CC 测量/缓存/通知路径制作第一版小补丁和定点日志。GitHub Actions run `34013982555` 已确认 Armbian 将该补丁作为第 1/228 项应用，内核在 2274 秒内完成编译，image、DTB、headers 和 libc-dev 包均成功生成；生成的内核镜像也包含新增的 `start unattached SRC toggling` 日志字符串。workflow 最终因非关键的编译器元数据解析失败而标红，不影响内核已编译完成的结论。补丁仍未经过实机验证，不能断言已经排除全部时序或电气问题。
+不需要为了开启普通日志再重编译：内核开启了 DEBUG_FS，FUSB302 和 TCPM 有内置环形日志。GitHub Actions run `34013982555` 已确认 Armbian 将第一版小补丁作为第 1/228 项应用，内核在 2274 秒内完成编译，image、DTB、headers 和 libc-dev 包均成功生成；生成的内核镜像也包含新增的 `start unattached SRC toggling` 日志字符串。workflow 最终因非关键的编译器元数据解析失败而标红，不影响这些产物，实际安装的 image 与 DTB 哈希和 artifact 一致。
 
 第一版补丁在未连接状态的 Rp 设置路径启用 FUSB302 fixed-source toggling，复用已有 TOGDONE 的双 CC Open/Rd/Ra 分类与通知；同时缓存 `set_roles()` 的 attached 状态，禁止已连接状态走该分支，以避开历史上的 PD power-role swap 回归。补丁由构建脚本复制到 Armbian 的 `userpatches/kernel/archive/rockchip64-7.1/`，再由 `compile.sh kernel` 应用到 `drivers/usb/typec/tcpm/fusb302.c`。固定输入和实现见仓库的 `kernel/build.env`、`kernel/patches/` 及 `.github/workflows/typec-test-kernel.yml`。
 
+当前结论仍限定为首轮验证通过，不能外推为全面验收完成。尚需正插、正反方向多次完整拔插、拔线后的 VBUS/partner 清理、连接电脑时的 Sink/Device、实际文件传输以及 USB3 测试。
+
+## 测试内核部署与首轮实机结果
+
+2026-09-06 从 run `34013982555` 下载并校验 image、DTB 软件包，只向 `.166` 安装。测试包使用独立包名，旧版内核文件与模块目录完整保留。Armbian 包安装生成了匹配的 `initrd.img`，但该板没有自动生成新版本 `uInitrd` 的 post-update hook；部署脚本因此先停止，随后用 `mkimage` 包装匹配 initramfs、核对 payload，再切换 `/boot/Image`、`/boot/uInitrd` 和 `/boot/dtb` 软链接。`extlinux.conf` 保持原样，仍只有一个 `LABEL Armbian` 和原 Type-C overlay。
+
+重启约 22 秒后 SSH 恢复。运行版本为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，boot ID 为 `8b24b245-36ad-49f0-a8f2-fb7221506077`。手机在板端反向插入并在重启期间保持连接，未做任何 sysfs 角色写入，观察到：
+
+```text
+port_type=[dual] source sink
+preferred_role=source
+power_role=[source] sink
+data_role=[host] device
+orientation=reverse
+power_operation_mode=1.5A
+partner=present
+```
+
+USB 总线自动枚举 `18d1:4ee8 Google Inc. Nexus/Pixel Device (MIDI)`，设备实际为 OnePlus 8T，连接在 Type-C 控制器对应的 USB2 root hub，速率为 480 Mbps。此结果验证了 Source/Host 与数据枚举，不代表 USB3 已通过，也不能单靠软件观察确认手机端充电指示或长期传输稳定性。
+
+本轮只读取一次 debugfs 环形日志。关键序列为：
+
+| 开机时间 | 组件 | 事件 |
+| --- | --- | --- |
+| 4.417258 s | TCPM | `SNK_DEBOUNCED -> SRC_TRY` |
+| 4.485062 s | FUSB302 | `start unattached SRC toggling for Rp-1.5`，确认补丁路径实际执行 |
+| 4.571664 s | FUSB302 | TOGDONE 分类得到 `cc1=Ra, cc2=Rd` |
+| 4.621067 s | FUSB302 | 缓存并通知 `cc1=Ra, cc2=Rd` |
+| 4.621071 s | TCPM | `SRC_TRY_WAIT -> SRC_TRY_DEBOUNCE` |
+| 4.641106 s | TCPM | `SRC_TRY_DEBOUNCE -> SRC_ATTACHED` |
+| 4.644343 s | FUSB302 | `pd header := Source, Host, attached=true` |
+| 4.757101 s | TCPM | `SRC_STARTUP -> SRC_READY` |
+
+本次启动未发现 FUSB302、TCPM 或 Type-C warning/error，也没有 WARN/Oops 或模块版本错误。`typec_extcon` 已加载，模块文件来自测试版本自己的 `/lib/modules/7.1.8-edge-rockchip64-eaidk610-typec-r1/`。内核仍有音频、蓝牙固件、HDMI dummy regulator 等与本次 Type-C 修改无关的既有告警，不能把它们误记为补丁回归。板上原始采集目录为 `/home/ihexon/typec-test-log-8b24b245-36ad-49f0-a8f2-fb7221506077`。
+
 ## 版本和配置
 
-- 软件包：`linux-image-edge-rockchip64 26.8.3`。
-- 运行版本：`7.1.8-edge-rockchip64`。
+- 原软件包：`linux-image-edge-rockchip64 26.8.3`；原版本 `7.1.8-edge-rockchip64` 仍保留用于恢复。
+- 当前测试软件包：`linux-image-edge-rockchip64-eaidk610-typec-r1 26.08.0-trunk` 和 `linux-dtb-edge-rockchip64-eaidk610-typec-r1 26.08.0-trunk`。
+- 当前运行版本：`7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 - 软件包记录的基础源码提交：`25c76bea853d0db65b51fb4697a47cbfd9e35e76`，对应 Linux 7.1.8。
 - 软件包记录的 patches hash：`9a481daaebb92ebe`。
-- 本轮 boot ID：`f06223cb-8c8b-4e85-b7ac-af69d1fc7f9a`。
+- 原版调查 boot ID：`f06223cb-8c8b-4e85-b7ac-af69d1fc7f9a`；测试内核 boot ID：`8b24b245-36ad-49f0-a8f2-fb7221506077`。
 - `CONFIG_TYPEC_FUSB302=y`、`CONFIG_TYPEC_TCPM=y`、`CONFIG_DEBUG_FS=y`、`CONFIG_DYNAMIC_DEBUG=y`、`CONFIG_KPROBES=y`、`CONFIG_FUNCTION_TRACER=y`。
-- 运行中设备树 `try-power-role` 为 `source`；sysfs 为 `port_type=dual`、`preferred_role=source`。采集时实际角色为 Sink/Device。
+- 运行中设备树 `try-power-role` 为 `source`；测试内核首轮 sysfs 为 `port_type=dual`、`preferred_role=source`，实际角色为 Source/Host。
 - `/lib/modules/7.1.8-edge-rockchip64/build` 不存在，不能直接在该板上针对当前内核构建外部模块。
 
 核对命令：
@@ -30,7 +66,7 @@ uname -a
 dpkg-query -s linux-image-edge-rockchip64
 cat /proc/sys/kernel/random/boot_id
 grep -E 'CONFIG_(TYPEC_FUSB302|TYPEC_TCPM|DEBUG_FS|DYNAMIC_DEBUG|KPROBES|FUNCTION_TRACER)=' \
-    /boot/config-7.1.8-edge-rockchip64
+    /boot/config-7.1.8-edge-rockchip64-eaidk610-typec-r1
 cat /sys/class/typec/port0/port_type
 cat /sys/class/typec/port0/preferred_role
 cat /sys/class/typec/port0/power_role
@@ -121,6 +157,8 @@ aarch64-linux-gnu-objdump -D -b binary -m aarch64 \
 ## 是否需要重编译，以及下一步
 
 现在不需要用户先重编译来开启日志。修复阶段保持相同 Linux 基础版本、板级 overlay 和供电参数，只改 FUSB302 的 CC 更新路径；完整内核编译只在 GitHub Actions 的 ARM64 runner 进行。当前本地 Docker 容器不承担完整编译；Actions 上的 Armbian ARM64 构建容器属于该 runner 内的标准构建层。
+
+r1 当前使用 Armbian `./compile.sh kernel`，原因不是内核必须打成 `.deb`，而是需要可靠复现 rockchip64 edge 的完整补丁顺序。构建日志显示 228 项中第 1 项为本仓库 FUSB302 补丁，后续包含 `typec-extcon`、TCPM、Rockchip USB PHY/charger detection 等板级改动。后续可在 Armbian 准备出的等价源码树上直接执行传统 `make Image modules dtbs`，再输出 tar.zst 与 installer；不能用未应用这套补丁的纯上游 7.1.8 代替。run `34013982555` 中内核编译耗时 2274 秒、Debian 打包耗时 59 秒，因此 tgz 的主要价值是简化部署，真正的加速应来自已打补丁源码和编译缓存。
 
 第一次完整编译证明补丁进入目标源码，但原自定义 `LOCALVERSION` 扩展造成 Armbian 打包名称不一致。后续构建改用 `userpatches/config/sources/families/rockchip64.conf` 覆盖测试用 `LINUXFAMILY`，使 Make、模块目录、Debian 包路径与包名从同一变量生成；run `34013982555` 已证明该修正有效，实际版本为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 
