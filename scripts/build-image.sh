@@ -55,8 +55,10 @@ image_path=${images[0]}
 
 "${script_dir}/validate-image.sh" "${image_path}"
 
-xz -T0 -6 --keep "${image_path}"
 compressed_image="${image_path}.xz"
+compressed_tmp="${compressed_image}.tmp"
+xz -T0 -6 --stdout "${image_path}" > "${compressed_tmp}"
+mv "${compressed_tmp}" "${compressed_image}"
 release_dir="${repo_root}/artifacts/release"
 cp -a "${compressed_image}" "${release_dir}/"
 

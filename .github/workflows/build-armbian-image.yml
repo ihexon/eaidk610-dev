@@ -81,7 +81,8 @@ jobs:
           shopt -s nullglob
           for image in armbian/output/images/*.img; do
             if [[ ! -f ${image}.xz ]]; then
-              xz -T0 -1 --keep "${image}"
+              xz -T0 -1 --stdout "${image}" > "${image}.xz.tmp"
+              mv "${image}.xz.tmp" "${image}.xz"
             fi
           done
 
