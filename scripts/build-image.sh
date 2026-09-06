@@ -76,7 +76,7 @@ cp -a "${compressed_image}" "${release_dir}/"
 	printf '# EAIDK610 Armbian Edge image\n\n'
 	printf 'Directly bootable Armbian Trixie Minimal image for OPEN AI LAB EAIDK-610.\n\n'
 	printf -- '- Linux: Armbian edge %s with the EAIDK610 FUSB302 patch\n' "${ARMBIAN_KERNEL_SERIES}"
-	printf -- '- U-Boot: upstream %s; idbloader at LBA 64 and U-Boot FIT at LBA 16384\n' "${ARMBIAN_UBOOT_TAG}"
+	printf -- '- U-Boot: upstream %s binman image at LBA 64; U-Boot FIT at LBA 16384\n' "${ARMBIAN_UBOOT_TAG}"
 	printf -- '- Device tree: rockchip/rk3399-eaidk-610.dtb\n'
 	printf -- '- Type-C board overlay: installed and enabled by default\n\n'
 	printf 'Verify the download with `sha256sum -c SHA256SUMS`, decompress it, then write the entire image to eMMC or removable media. This is a pre-release until the complete hardware regression matrix is finished.\n'

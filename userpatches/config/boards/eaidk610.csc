@@ -11,12 +11,12 @@ BOOT_FDT_FILE="rockchip/rk3399-eaidk-610.dtb"
 KERNEL_TARGET="edge"
 KERNEL_TEST_TARGET="edge"
 
-# This exact upstream U-Boot already booted this board from eMMC.  Armbian's
-# rockchip64 writer embeds idbloader at LBA 64 and U-Boot FIT at LBA 16384.
+# This exact upstream U-Boot binman image already booted this board from eMMC.
+# Armbian writes u-boot-rockchip.bin at LBA 64; its FIT remains at LBA 16384.
 BOOTBRANCH_BOARD="tag:v2026.10-rc3"
 BOOTPATCHDIR="eaidk610-v2026.10-rc3"
 BL31_BLOB="rk33/rk3399_bl31_v1.36.elf"
-BOOT_SCENARIO="tpl-spl-blob"
+BOOT_SCENARIO="binman"
 
 SERIALCON="ttyS2"
 FULL_DESKTOP="yes"

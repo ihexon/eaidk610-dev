@@ -33,11 +33,15 @@ grep -Fqx 'BOOTCONFIG="eaidk-610-rk3399_defconfig"' "${board_file}"
 grep -Fqx 'BOOT_FDT_FILE="rockchip/rk3399-eaidk-610.dtb"' "${board_file}"
 grep -Fqx "BOOTBRANCH_BOARD=\"tag:${ARMBIAN_UBOOT_TAG}\"" "${board_file}"
 grep -Fqx 'BL31_BLOB="rk33/rk3399_bl31_v1.36.elf"' "${board_file}"
-grep -Fqx 'BOOT_SCENARIO="tpl-spl-blob"' "${board_file}"
+grep -Fqx 'BOOT_SCENARIO="binman"' "${board_file}"
 
 common_inc="${repo_root}/armbian/config/sources/families/include/rockchip64_common.inc"
 edge_config=$(sed -n '/^[[:space:]]*edge)/,/;;/p' "${common_inc}")
 grep -Fq "KERNEL_MAJOR_MINOR=\"${ARMBIAN_KERNEL_SERIES}\"" <<< "${edge_config}"
+grep -Fq 'UBOOT_TARGET_MAP="BL31=$RKBIN_DIR/$BL31_BLOB ROCKCHIP_TPL=$RKBIN_DIR/$DDR_BLOB;;u-boot-rockchip.bin"' \
+	"${common_inc}"
+grep -Fq 'dd if=$1/u-boot-rockchip.bin of=$2 bs=32k seek=1 conv=notrunc status=none' \
+	"${common_inc}"
 kernel_config="${repo_root}/armbian/config/kernel/linux-rockchip64-edge.config"
 for symbol in CONFIG_TYPEC_TCPM=y CONFIG_TYPEC_FUSB302=y CONFIG_TYPEC_EXTCON=m; do
 	grep -Fqx "${symbol}" "${kernel_config}" || fail "missing ${symbol}"
@@ -98,6 +102,7 @@ if [[ ${network_check} == yes ]]; then
 	curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
 		--output "${uboot_config}" "${uboot_config_url}"
 	grep -Fqx 'CONFIG_DEFAULT_FDT_FILE="rockchip/rk3399-eaidk-610.dtb"' "${uboot_config}"
+	grep -Fqx 'CONFIG_TPL=y' "${uboot_config}"
 	resolved_uboot=$(git ls-remote https://github.com/u-boot/u-boot.git \
 		"refs/tags/${ARMBIAN_UBOOT_TAG}^{}" | awk '{print $1}')
 	[[ ${resolved_uboot} == "${ARMBIAN_UBOOT_COMMIT}" ]] || fail 'U-Boot tag moved or is unavailable'
@@ -142,7 +147,8 @@ if [[ ${network_check} == yes ]]; then
 		.BOOTCONFIG == "eaidk-610-rk3399_defconfig" and
 		.BOOTBRANCH == $tag and
 		.BOOTPATCHDIR == "eaidk610-v2026.10-rc3" and
-		.BOOT_SCENARIO == "tpl-spl-blob" and
+		.BOOT_SCENARIO == "binman" and
+		(.UBOOT_TARGET_MAP | endswith(";;u-boot-rockchip.bin")) and
 		.BL31_BLOB == "rk33/rk3399_bl31_v1.36.elf" and
 		.BOOT_FDT_FILE == "rockchip/rk3399-eaidk-610.dtb" and
 		(.WANT_ARTIFACT_ALL_NAMES_ARRAY | index("uboot") != null) and
