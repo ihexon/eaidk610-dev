@@ -160,6 +160,8 @@ aarch64-linux-gnu-objdump -D -b binary -m aarch64 \
 
 r1 当前使用 Armbian `./compile.sh kernel`，原因不是内核必须打成 `.deb`，而是需要可靠复现 rockchip64 edge 的完整补丁顺序。构建日志显示 228 项中第 1 项为本仓库 FUSB302 补丁，后续包含 `typec-extcon`、TCPM、Rockchip USB PHY/charger detection 等板级改动。后续可在 Armbian 准备出的等价源码树上直接执行传统 `make Image modules dtbs`，再输出 tar.zst 与 installer；不能用未应用这套补丁的纯上游 7.1.8 代替。run `34013982555` 中内核编译耗时 2274 秒、Debian 打包耗时 59 秒，因此 tgz 的主要价值是简化部署，真正的加速应来自已打补丁源码和编译缓存。
 
+历史 workflow 的红色结论主要来自本仓库外围步骤，而非 Armbian 没有生成内核：版本 family、过宽的 whitespace 检查和 `compile.h` 制表符解析分别在内核编译后暴露。现已增加零编译成本的静态 preflight，固定并校验 config、FUSB302 补丁和 family 文件哈希，测试关键配置、补丁语法、kernelrelease 关系及编译器元数据 parser fixture；启动 Armbian 前还会取固定 Linux 提交的原始 `fusb302.c` 做精确 apply check。以后若仍使用 Armbian，框架成功返回后先保存成功标记和全部原始包；非关键元数据只告警，启动安全相关的 Image、模块、DTB、版本和补丁检查仍保持强制失败。该调整不会自动触发新的耗时构建。
+
 第一次完整编译证明补丁进入目标源码，但原自定义 `LOCALVERSION` 扩展造成 Armbian 打包名称不一致。后续构建改用 `userpatches/config/sources/families/rockchip64.conf` 覆盖测试用 `LINUXFAMILY`，使 Make、模块目录、Debian 包路径与包名从同一变量生成；run `34013982555` 已证明该修正有效，实际版本为 `7.1.8-edge-rockchip64-eaidk610-typec-r1`。
 
 定点日志应包括：

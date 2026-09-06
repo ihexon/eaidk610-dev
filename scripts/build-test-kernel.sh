@@ -7,6 +7,9 @@ repo_root="$(cd -- "${script_dir}/.." && pwd)"
 # shellcheck source=../kernel/build.env
 source "${repo_root}/kernel/build.env"
 
+# Keep all deterministic input/parser failures ahead of the expensive build.
+"${script_dir}/preflight-test-kernel-build.sh"
+
 require_value() {
 	local name="$1"
 	if [[ -z "${!name:-}" ]]; then
@@ -125,8 +128,29 @@ echo "Config SHA256 ${config_sha256}; patch SHA256 ${patch_sha256}"
 		SHARE_LOG=no
 )
 
+{
+	printf 'kernel_compile_and_package=success\n'
+	printf 'expected_kernelrelease=%s\n' "${EXPECTED_KERNELRELEASE}"
+	printf 'armbian_commit=%s\n' "${actual_armbian_commit}"
+	printf 'linux_commit=%s\n' "${LINUX_COMMIT}"
+} > "${artifacts_dir}/KERNEL-BUILD-SUCCEEDED.txt"
+
 # Armbian relaunches privileged build phases through sudo.
 sudo chown -R "$(id -u):$(id -g)" "${armbian_dir}/output"
+
+# Preserve every Armbian-produced package before optional source/metadata
+# inspection. A later verifier failure must not hide an already-built kernel.
+mapfile -d '' built_debs < <(
+	find "${armbian_dir}/output/debs" -maxdepth 1 -type f -name '*.deb' -print0 | sort -z
+)
+if (( ${#built_debs[@]} == 0 )); then
+	echo "Armbian did not produce any kernel packages" >&2
+	exit 3
+fi
+
+for deb in "${built_debs[@]}"; do
+	cp -a "${deb}" "${debs_dir}/"
+done
 
 kernel_source="${armbian_dir}/cache/sources/linux-kernel-worktree/${ARMBIAN_KERNEL_SERIES}__${ARMBIAN_LINUXFAMILY}__arm64"
 if [[ ! -d "${kernel_source}" ]]; then
@@ -148,18 +172,6 @@ grep -Fq "start unattached SRC toggling" \
 	"${kernel_source}/drivers/usb/typec/tcpm/fusb302.c"
 grep -Fq "extcon,ignore-usb" \
 	"${kernel_source}/drivers/phy/rockchip/phy-rockchip-inno-usb2.c"
-
-mapfile -d '' built_debs < <(
-	find "${armbian_dir}/output/debs" -maxdepth 1 -type f -name '*.deb' -print0 | sort -z
-)
-if (( ${#built_debs[@]} == 0 )); then
-	echo "Armbian did not produce any kernel packages" >&2
-	exit 3
-fi
-
-for deb in "${built_debs[@]}"; do
-	cp -a "${deb}" "${debs_dir}/"
-done
 
 mapfile -d '' image_debs < <(
 	find "${debs_dir}" -maxdepth 1 -type f \
@@ -197,14 +209,13 @@ if [[ "${kernelrelease}" != "${EXPECTED_KERNELRELEASE}" ]]; then
 fi
 
 compile_header="${kernel_source}/include/generated/compile.h"
-if [[ ! -f "${compile_header}" ]]; then
-	echo "Expected generated compiler metadata is missing: ${compile_header}" >&2
-	exit 3
+kernel_compiler=unavailable
+if [[ -f "${compile_header}" ]]; then
+	kernel_compiler="$("${script_dir}/read-kernel-compiler.sh" "${compile_header}" || true)"
 fi
-kernel_compiler="$(sed -n 's/^#define[[:space:]]\+LINUX_COMPILER[[:space:]]\+"\(.*\)"$/\1/p' "${compile_header}")"
-if [[ -z "${kernel_compiler}" ]]; then
-	echo "Unable to read LINUX_COMPILER from ${compile_header}" >&2
-	exit 3
+if [[ -z "${kernel_compiler}" || "${kernel_compiler}" == unavailable ]]; then
+	echo "Warning: compiler metadata unavailable; retaining deployable kernel artifacts" >&2
+	kernel_compiler=unavailable
 fi
 
 image_file="${image_root}/boot/vmlinuz-${kernelrelease}"

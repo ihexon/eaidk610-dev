@@ -20,6 +20,10 @@ jobs:
       - name: Check out fixed repository revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Fail fast on inconsistent build inputs
+        shell: bash
+        run: scripts/preflight-test-kernel-build.sh
+
       - name: Verify runner and prepare packaging tools
         shell: bash
         run: |
@@ -27,15 +31,19 @@ jobs:
           test "$(uname -m)" = aarch64
           test "$(dpkg --print-architecture)" = arm64
           sudo apt-get update
-          sudo apt-get install --yes git jq zstd
+          sudo apt-get install --yes ca-certificates curl git jq zstd
           sudo apt-get clean
           mkdir -p artifacts
           df -h /
 
+      - name: Verify patch against exact Linux source
+        shell: bash
+        run: scripts/preflight-test-kernel-build.sh --network
+
       - name: Build kernel with fixed Armbian patch set
         shell: bash
         run: |
-          set -o pipefail
+          set -Eeuo pipefail
           scripts/build-test-kernel.sh 2>&1 | tee artifacts/build.log
 
       - name: Collect failure diagnostics

@@ -14,6 +14,24 @@ Inputs:
 - `armbian/rockchip64-family.conf`: gives the test kernel a distinct Armbian
   family so its kernel release, module directory and Debian package paths agree.
 
+Before any expensive build, the workflow runs
+`scripts/preflight-test-kernel-build.sh`. It verifies the pinned input hashes,
+the family/release relationship, required Type-C configuration, patch syntax,
+and the compiler-metadata parser (including tab-separated `compile.h` input).
+The workflow then runs the `--network` variant to check that the patch applies
+to `fusb302.c` from the exact pinned Linux commit before starting Armbian.
+Run the same check locally after changing any build input:
+
+```sh
+scripts/preflight-test-kernel-build.sh
+```
+
+When an input changes intentionally, update its SHA-256 in `build.env` in the
+same commit. Once Armbian returns successfully, the build script writes
+`KERNEL-BUILD-SUCCEEDED.txt` and preserves all original packages before doing
+optional metadata inspection. Missing compiler-description metadata is a
+warning; kernel release, modules, DTBs, and patch-content checks remain fatal.
+
 Run the workflow from the repository's Actions page, or with:
 
 ```sh
