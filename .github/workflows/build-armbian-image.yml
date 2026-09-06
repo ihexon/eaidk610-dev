@@ -73,6 +73,18 @@ jobs:
         shell: bash
         run: scripts/build-image.sh
 
+      - name: Compress failed image for recovery
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shopt -s nullglob
+          for image in armbian/output/images/*.img; do
+            if [[ ! -f ${image}.xz ]]; then
+              xz -T0 -1 --keep "${image}"
+            fi
+          done
+
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -80,11 +92,11 @@ jobs:
           name: eaidk610-image-failure-${{ github.run_id }}
           path: |
             artifacts/
-            armbian/output/images/
+            armbian/output/images/*.img.xz
             armbian/output/logs/
             armbian/output/info/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
       - name: Publish validated image as GitHub pre-release
         env:
