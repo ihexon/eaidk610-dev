@@ -1,0 +1,110 @@
+name: Build and release EAIDK610 Armbian image
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New GitHub pre-release tag
+        required: true
+        default: eaidk610-armbian-edge-r1
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eaidk610-armbian-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ARM64 full image build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out project and pinned Armbian framework
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Reject an invalid or existing release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ ${RELEASE_TAG} =~ ^eaidk610-armbian-edge-[A-Za-z0-9._-]+$ ]]
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            printf 'Release tag already exists: %s\n' "${RELEASE_TAG}" >&2
+            exit 2
+          fi
+
+      - name: Verify runner resources and install preflight tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(dpkg --print-architecture)" = arm64
+          available_kib=$(df --output=avail / | tail -n1)
+          (( available_kib >= 40 * 1024 * 1024 ))
+          sudo apt-get update
+          sudo apt-get install --yes \
+            ca-certificates curl device-tree-compiler e2fsprogs git jq \
+            shellcheck util-linux uuid-runtime xz-utils zstd
+          sudo apt-get clean
+          docker version
+          df -h /
+
+      - name: Run static and exact-source preflight
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shellcheck -S warning \
+            scripts/preflight-image-build.sh \
+            scripts/build-image.sh \
+            scripts/validate-image.sh \
+            userpatches/customize-image.sh
+          scripts/preflight-image-build.sh --network
+
+      - name: Build and validate complete image
+        shell: bash
+        run: scripts/build-image.sh
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eaidk610-image-failure-${{ github.run_id }}
+          path: |
+            artifacts/build.log
+            armbian/output/logs/
+            armbian/output/info/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish validated image as GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image_count=$(find artifacts/release -maxdepth 1 -type f -name '*.img.xz' | wc -l)
+          test "${image_count}" -eq 1
+          find artifacts/release -maxdepth 1 -type f -size +2G -print -quit | (! grep -q .)
+          (
+            cd artifacts/release
+            sha256sum --check SHA256SUMS
+          )
+          gh release create "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "EAIDK610 Armbian Edge r1" \
+            --notes-file artifacts/release/RELEASE-NOTES.md \
+            --prerelease \
+            artifacts/release/*.img.xz \
+            artifacts/release/SHA256SUMS \
+            artifacts/release/BUILD-MANIFEST.txt \
+            artifacts/release/RELEASE-NOTES.md

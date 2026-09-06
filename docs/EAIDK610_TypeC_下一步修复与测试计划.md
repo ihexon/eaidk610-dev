@@ -1,5 +1,11 @@
 # EAIDK-610 Type-C：下一步内核修复与测试计划
 
+> 2026-09-06 计划更新：活动交付从独立内核包升级为 EAIDK610 完整
+> Armbian edge 镜像。官方 `armbian/build` 固定为 submodule，我们只维护
+> `userpatches/` 中的 board、kernel、U-Boot 与镜像定制。GitHub Actions 在
+> ARM64 runner 构建、离线检查并发布 pre-release。详见
+> `docs/构建架构与发布.md`；下文的 7.1 r1 记录作为已验证基线保留。
+
 更新日期：2026-09-06。
 
 ## 结论与执行顺序

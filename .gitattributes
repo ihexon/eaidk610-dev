@@ -1,1 +1,2 @@
-kernel/patches/*.patch whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab
+userpatches/**/*.patch whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab
+archive/kernel-r1/kernel/patches/*.patch whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab

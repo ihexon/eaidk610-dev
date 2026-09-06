@@ -1,0 +1,97 @@
+/dts-v1/;
+/plugin/;
+
+/* EAIDK-610 / Armbian 7.1.8: USB-only, 5V/1.5A, no PD or DP. */
+/ {
+	fragment@0 {
+		target = <&fusb0>;
+		__overlay__ {
+			vbus-supply = <&vcc5v0_typec_managed>;
+			/* The original graph points to the now-disabled DWC3 node.
+			 * fwnode connection lookup then selects this bridge reference.
+			 */
+			usb-role-switch = <&eaidk_typec_bridge>;
+			connector {
+				power-role = "dual";
+				data-role = "dual";
+				try-power-role = "source";
+				pd-disable;
+				typec-power-opmode = "1.5A";
+				self-powered;
+				/* Keep native USB3 orientation via the existing graph;
+				 * also notify the USB2/extcon bridge.
+				 */
+				orientation-switch = <&eaidk_typec_bridge>;
+			};
+		};
+	};
+	fragment@1 {
+		target = <&vcc5v0_typec>;
+		__overlay__ { status = "disabled"; };
+	};
+	fragment@2 {
+		target-path = "/";
+		__overlay__ {
+			vcc5v0_typec_managed: regulator-vcc5v0-typec-managed {
+				compatible = "regulator-fixed";
+				regulator-name = "vcc5v0_typec_managed";
+				regulator-min-microvolt = <5000000>;
+				regulator-max-microvolt = <5000000>;
+				gpio = <&gpio4 21 0>;
+				enable-active-high;
+				pinctrl-names = "default";
+				pinctrl-0 = <&vcc5v0_typec_en>;
+				vin-supply = <&vcc5v0_sys>;
+				status = "okay";
+			};
+			eaidk_typec_bridge: typec-extcon {
+				compatible = "linux,typec-extcon-bridge";
+				usb-role-switch;
+				orientation-switch;
+			};
+		};
+	};
+	fragment@3 {
+		target = <&u2phy0>;
+		__overlay__ {
+			extcon = <&eaidk_typec_bridge>;
+			extcon,ignore-usb;
+		};
+	};
+	/* An overlay cannot remove the old usb-role-switch boolean. Keep
+	 * that node disabled and describe the same controller without it,
+	 * so DWC3 and USB2 PHY both consume the bridge's EXTCON_USB_HOST.
+	 */
+	fragment@4 {
+		target = <&usbdrd_dwc3_0>;
+		__overlay__ { status = "disabled"; };
+	};
+	fragment@5 {
+		target = <&usbdrd3_0>;
+		__overlay__ {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			usb-controller@fe800000 {
+				compatible = "snps,dwc3";
+				reg = <0 0xfe800000 0 0x100000>;
+				interrupts = <0 105 4 0>;
+				clocks = <&cru 129>, <&cru 246>, <&cru 131>;
+				clock-names = "ref", "bus_early", "suspend";
+				dr_mode = "otg";
+				phys = <&u2phy0_otg>, <&tcphy0_usb3>;
+				phy-names = "usb2-phy", "usb3-phy";
+				phy_type = "utmi_wide";
+				snps,dis_enblslpm_quirk;
+				snps,dis-u2-freeclk-exists-quirk;
+				snps,dis_u2_susphy_quirk;
+				snps,dis-del-phy-power-chg-quirk;
+				snps,dis-tx-ipgap-linecheck-quirk;
+				snps,xhci-trb-ent-quirk;
+				snps,usb3-phy-reset-quirk;
+				power-domains = <&power 24>;
+				extcon = <&eaidk_typec_bridge>;
+				status = "okay";
+			};
+		};
+	};
+};

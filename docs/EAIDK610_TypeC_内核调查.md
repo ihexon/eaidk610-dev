@@ -1,5 +1,10 @@
 # EAIDK-610 Type-C 自动角色选择：内核调查
 
+> 2026-09-06 构建路线更新：项目现以 `armbian/build` submodule 和根目录
+> `userpatches/` 生成 EAIDK610 完整 Armbian edge 镜像。7.1.8 kernel-only
+> r1 已归档到 `archive/kernel-r1/`；详细结构见 `docs/构建架构与发布.md`。
+> 下文保留已经完成的故障调查与实机证据。
+
 日期：2026-09-06。对象：`ihexon@192.168.1.166`。初始调查阶段只做诊断；同日后续阶段已安装并启动测试内核，实机结果另列如下。overlay、供电声明、GPIO 和 extlinux 内容均未改动。
 
 后续执行环境于 2026-09-06 更新为 Docker 容器，工作区为 `/home/ihexon/eaidk610-dev`；该容器不是 EAIDK610，也不再把原本的 `eaidk02` 当作执行端。容器只用于源码、GitHub Actions 和远程部署组织；本报告的板上证据和结论仍指向 `.166`，不因执行端变更而改变。所有 `/boot`、`/sys/class/typec`、debugfs、角色切换和重启命令都只能在明确连接 `.166` 后执行，不得对容器本身执行。

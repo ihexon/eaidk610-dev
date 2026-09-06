@@ -1,5 +1,11 @@
 /artifacts/
 /.cache/
+/local/
+/references/**/*.pdf
+/tools/rkdeveloptool/
+/userpatches/overlay/boot/overlay-user/*.dtbo
 *.log
 *.deb
+*.img
+*.img.xz
 *.tar.zst
