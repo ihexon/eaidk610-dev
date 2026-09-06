@@ -54,7 +54,9 @@ printf '%s  %s\n' "${TYPEC_OVERLAY_SOURCE_SHA256}" "${overlay_source}" | sha256s
 git apply --numstat "${patch_path}" | grep -Fq $'drivers/usb/typec/tcpm/fusb302.c'
 [[ -d ${repo_root}/userpatches/u-boot/eaidk610-v2026.10-rc3 ]]
 
-command -v dtc >/dev/null || fail 'device-tree-compiler is required'
+for tool in dtc fdtoverlay fdtget jq sfdisk strings xz; do
+	command -v "${tool}" >/dev/null || fail "required validation tool is unavailable: ${tool}"
+done
 overlay_check=$(mktemp /tmp/eaidk610-overlay.XXXXXX.dtbo)
 dtc -q -@ -I dts -O dtb -o "${overlay_check}" "${overlay_source}"
 dtc -q -I dtb -O dts -o /dev/null "${overlay_check}"

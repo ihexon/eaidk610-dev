@@ -52,7 +52,7 @@ jobs:
           (( available_kib >= 40 * 1024 * 1024 ))
           sudo apt-get update
           sudo apt-get install --yes \
-            ca-certificates curl device-tree-compiler e2fsprogs git jq \
+            binutils ca-certificates curl device-tree-compiler e2fsprogs fdisk git jq \
             shellcheck util-linux uuid-runtime xz-utils zstd
           sudo apt-get clean
           docker version
@@ -80,6 +80,7 @@ jobs:
           name: eaidk610-image-failure-${{ github.run_id }}
           path: |
             artifacts/
+            armbian/output/images/
             armbian/output/logs/
             armbian/output/info/
           if-no-files-found: warn

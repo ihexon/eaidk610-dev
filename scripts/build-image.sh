@@ -53,7 +53,7 @@ mapfile -d '' images < <(find "${armbian_dir}/output/images" -maxdepth 1 -type f
 [[ ${#images[@]} -eq 1 ]] || { printf 'Expected one image, found %s\n' "${#images[@]}" >&2; exit 3; }
 image_path=${images[0]}
 
-"${script_dir}/validate-image.sh" "${image_path}" "${build_log}"
+"${script_dir}/validate-image.sh" "${image_path}"
 
 xz -T0 -6 --keep "${image_path}"
 compressed_image="${image_path}.xz"
