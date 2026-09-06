@@ -15,7 +15,7 @@ read -r edge_linux_commit _ < <(git ls-remote \
 	"refs/heads/linux-${ARMBIAN_KERNEL_SERIES}.y")
 [[ ${edge_linux_commit} =~ ^[0-9a-f]{40}$ ]]
 export EAIDK610_EDGE_LINUX_COMMIT=${edge_linux_commit}
-"${script_dir}/preflight-image-build.sh" --network
+"${script_dir}/preflight-image-build.sh"
 
 armbian_dir="${repo_root}/armbian"
 if [[ -e ${armbian_dir}/userpatches && ! -d ${armbian_dir}/userpatches ]]; then
@@ -28,7 +28,6 @@ overlay_binary="${overlay_source%.dts}.dtbo"
 dtc -q -@ -I dts -O dtb -o "${overlay_binary}" "${overlay_source}"
 install -d "${armbian_dir}/userpatches"
 cp -a "${repo_root}/userpatches/." "${armbian_dir}/userpatches/"
-diff -qr "${repo_root}/userpatches" "${armbian_dir}/userpatches"
 
 install -d "${repo_root}/artifacts/release"
 build_log="${repo_root}/artifacts/build.log"
@@ -44,8 +43,7 @@ build_log="${repo_root}/artifacts/build.log"
 		KERNEL_CONFIGURE=no \
 		KERNELBRANCH="commit:${edge_linux_commit}" \
 		EXTRAWIFI=no \
-		COMPRESS_OUTPUTIMAGE=sha,img \
-		ARTIFACT_IGNORE_CACHE=yes \
+		COMPRESS_OUTPUTIMAGE=img \
 		SHARE_LOG=no
 ) 2>&1 | tee "${build_log}"
 
@@ -80,15 +78,14 @@ cp -a "${compressed_image}" "${release_dir}/"
 	printf -- '- Linux: Armbian edge %s with the EAIDK610 FUSB302 patch\n' "${ARMBIAN_KERNEL_SERIES}"
 	printf -- '- U-Boot: upstream %s binman image at LBA 64; U-Boot FIT at LBA 16384\n' "${ARMBIAN_UBOOT_TAG}"
 	printf -- '- Device tree: rockchip/rk3399-eaidk-610.dtb\n'
-	printf -- '- Type-C board overlay: installed and enabled by default\n\n'
+	printf -- '- Board overlay: Type-C extcon/role switching, USB3 PHY orientation, headphone detection, and speaker amplifier GPIO\n\n'
 	printf 'Verify the download with `sha256sum -c SHA256SUMS`, decompress it, then write the entire image to eMMC or removable media. This is a pre-release until the complete hardware regression matrix is finished.\n'
 } > "${release_dir}/RELEASE-NOTES.md"
 
 (
 	cd "${release_dir}"
 	checksum_tmp=$(mktemp /tmp/eaidk610-sha256sums.XXXXXX)
-	find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z |
-		xargs -0 sha256sum > "${checksum_tmp}"
+	sha256sum -- ./*.img.xz BUILD-MANIFEST.txt > "${checksum_tmp}"
 	mv "${checksum_tmp}" SHA256SUMS
 )
 

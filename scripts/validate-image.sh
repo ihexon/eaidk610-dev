@@ -68,6 +68,37 @@ connector=/i2c@ff3d0000/typec-portc@22/connector
 	fail 'overlay did not set the connector Source preference'
 [[ $(fdtget -t s "${merged_dtb}" "${connector}" typec-power-opmode) == 1.5A ]] || \
 	fail 'overlay did not set the connector current advertisement to 1.5A'
+tcphy0_path=$(fdtget -t s "${merged_dtb}" /__symbols__ tcphy0)
+tcphy0_extcon=$(fdtget -t x "${merged_dtb}" "${tcphy0_path}" extcon)
+bridge_phandle=$(fdtget -t x "${merged_dtb}" /typec-extcon phandle)
+[[ ${tcphy0_extcon} == "${bridge_phandle}" ]] || \
+	fail 'overlay did not connect the RK3399 Type-C PHY to the extcon bridge'
+
+read -r hp_detect_gpio hp_detect_pin hp_detect_flags < <(
+	fdtget -t i "${merged_dtb}" /rt5651-sound simple-audio-card,hp-det-gpios
+)
+gpio4_path=$(fdtget -t s "${merged_dtb}" /__symbols__ gpio4)
+gpio4_phandle=$(fdtget -t i "${merged_dtb}" "${gpio4_path}" phandle)
+[[ ${hp_detect_gpio} == "${gpio4_phandle}" && ${hp_detect_pin} == 28 && ${hp_detect_flags} == 0 ]] || \
+	fail 'overlay did not describe active-high GPIO4_D4 headphone detection'
+speaker_amp_phandle=$(fdtget -t x "${merged_dtb}" /audio-amplifier phandle)
+sound_aux_phandle=$(fdtget -t x "${merged_dtb}" /rt5651-sound simple-audio-card,aux-devs)
+[[ ${sound_aux_phandle} == "${speaker_amp_phandle}" ]] || \
+	fail 'overlay did not attach the speaker amplifier to simple-audio-card'
+[[ $(fdtget -t s "${merged_dtb}" /audio-amplifier compatible) == simple-audio-amplifier ]] || \
+	fail 'overlay did not create a supported speaker amplifier'
+read -r speaker_enable_gpio speaker_enable_pin speaker_enable_flags < <(
+	fdtget -t i "${merged_dtb}" /audio-amplifier enable-gpios
+)
+gpio0_path=$(fdtget -t s "${merged_dtb}" /__symbols__ gpio0)
+gpio0_phandle=$(fdtget -t i "${merged_dtb}" "${gpio0_path}" phandle)
+[[ ${speaker_enable_gpio} == "${gpio0_phandle}" && ${speaker_enable_pin} == 11 && ${speaker_enable_flags} == 0 ]] || \
+	fail 'overlay did not describe active-high GPIO0_B3 speaker enable'
+speaker_supply=$(fdtget -t x "${merged_dtb}" /audio-amplifier VCC-supply)
+vcc5v0_sys_path=$(fdtget -t s "${merged_dtb}" /__symbols__ vcc5v0_sys)
+vcc5v0_sys_phandle=$(fdtget -t x "${merged_dtb}" "${vcc5v0_sys_path}" phandle)
+[[ ${speaker_supply} == "${vcc5v0_sys_phandle}" ]] || \
+	fail 'overlay speaker amplifier is not supplied by VCC5V0_SYS'
 
 cleanup
 trap - EXIT

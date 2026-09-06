@@ -6,11 +6,11 @@
 > ARM64 runner 构建、离线检查并发布 pre-release。详见
 > `docs/构建架构与发布.md`；下文的 7.1 r1 记录作为已验证基线保留。
 
-更新日期：2026-09-06。
+更新日期：2026-09-07。
 
 ## 结论与执行顺序
 
-FUSB302 软件 Try.Source CC 状态更新补丁已经用 GitHub Actions 构建，并安装到 `ihexon@192.168.1.166`。测试板已成功重启进入独立版本 `7.1.8-edge-rockchip64-eaidk610-typec-r1`；首轮带手机反向插入启动在 `port_type=dual` 下自动进入 Source/Host、枚举手机，补丁定点日志证明新路径完成 Rd 分类并通知 TCPM。继续保留现有 Type-C overlay，不修改相同 DT 属性。
+FUSB302 软件 Try.Source CC 状态更新补丁已经用 GitHub Actions 构建，并安装到 `ihexon@192.168.1.166`。测试板已成功重启进入独立版本 `7.1.8-edge-rockchip64-eaidk610-typec-r1`；首轮带手机反向插入启动在 `port_type=dual` 下自动进入 Source/Host、枚举手机，补丁定点日志证明新路径完成 Rd 分类并通知 TCPM。2026-09-07 的 DTS 复查在同一个 overlay 中追加 `tcphy0` extcon、active-high 耳机检测和受支持的 speaker amplifier 描述；这些新增项尚未部署到该轮 7.1 实机环境。
 
 顺序：GitHub CLI 与仓库访问（已完成）→ 固定构建基线（已完成）→ 编写小范围驱动补丁和定点日志（已完成）→ ARM64 内核编译与打包（已完成）→ 建立远端回退入口（已完成）→ 安装并启动测试内核（已完成）→ 自动角色选择首轮验收（已通过）→ 发布 r1 pre-release（已完成）→ 正反插与角色切换回归 → 整理正式补丁。
 
@@ -23,7 +23,7 @@ FUSB302 软件 Try.Source CC 状态更新补丁已经用 GitHub Actions 构建�
 | 执行端 | Docker 容器，工作区 `/home/ihexon/eaidk610-dev`；不是 EAIDK610，不承载板级 `/boot`、overlay 或 Type-C 硬件 |
 | 测试板 | `ihexon@192.168.1.166`；运行 `7.1.8-edge-rockchip64-eaidk610-typec-r1`，原内核仍保留，overlay 已加载 |
 | 已验证功能 | 带手机反向插入启动；从 `port_type=dual` 自动 Try.Source 到 Source/Host；OnePlus 8T 以 USB2 480 Mbps 枚举 |
-| 未完成事项 | 正插、正反方向多次拔插、连接电脑的 Sink/Device、实际文件复制、拔线/VBUS 清理、USB3 和长期回归 |
+| 未完成事项 | 正插、正反方向多次拔插、连接电脑的 Sink/Device、实际文件复制、拔线/VBUS 清理、USB3 两方向 5 Gbps、耳机插拔和扬声器播放回归 |
 | 远端最后一次检查 | 自动角色为 Source/Host，`orientation=reverse`、partner 存在，手机为 `18d1:4ee8`；Type-C 相关错误数为 0 |
 | 源码仓库 | `https://github.com/ihexon/eaidk610-dev`；容器内 Git 工作树为 `/home/ihexon/eaidk610-dev/eaidk610-dev`，通过 HTTPS 推送到 `main` |
 | GitHub CLI | 已安装；`github.com` 只保留并激活 `ihexon`，仓库权限为 `ADMIN`，Git 通过 HTTPS 由 `gh` 提供凭据 |
@@ -35,7 +35,7 @@ FUSB302 软件 Try.Source CC 状态更新补丁已经用 GitHub Actions 构建�
 - Docker 容器只负责源码、CI 和远程组织；不把容器的 `/boot`、`/sys` 或运行内核当作 EAIDK610 状态，不尝试向容器安装测试内核。
 - 先在 `.166` 测试。中断手机连接和重启前通知用户；涉及插拔、正反插、串口恢复时请用户配合。
 - 继续使用单个 overlay、单个 `LABEL Armbian`，不增加用户不需要的 fallback 菜单项。
-- 保留当前原版 DTB、overlay、5V/1.5A 声明及 `pd-disable`，不同时引入 PD、DP 或供电能力变更。
+- 保留当前原版 DTB、5V/1.5A 声明及 `pd-disable`，不同时引入 PD、DP 或供电能力变更；板级修复继续集中在单个 overlay。
 - 不恢复 VBUS 常开、不直接拉高 GPIO，不用 Source-only 服务掩盖自动协商失败。
 - 不把 sudo 密码、GitHub token、SSH 私钥写入仓库、workflow 或日志。
 
@@ -281,6 +281,10 @@ echo dual | sudo tee /sys/class/typec/port0/port_type
 | 带手机启动 | 正反方向分别测试 | 启动后自动进入正确角色，不需 sysfs 干预 |
 | 板子连接电脑 | 正反插、恢复后再接手机 | 电脑作为 Source 时板子正常 Sink/Device；再接手机自动恢复 Source/Host |
 | 手机数据传输 | 用户选择文件传输模式 | 实际复制一个测试文件并核对内容，无反复断连 |
+| USB3 Host 正反插 | USB3 存储设备，板端翻转插头 | 两个方向的 `lsusb -t` 都显示 `5000M`，读写文件成功且不降为 `480M` |
+| USB3 Device 正反插 | 配置有效 SuperSpeed gadget 后测试 | 两个方向均以 SuperSpeed 枚举，tcphy 与 DWC3 角色一致 |
+| 耳机检测 | 不插、插入、拔出各检查一次 | ALSA jack 状态按实际动作变化；插入为 active-high，不反相 |
+| 扬声器播放 | 用 ALSA 播放测试音 | PT5305 只在播放路径活动时使能，扬声器有声且无 GPIO 占用冲突 |
 | 拔线与空闲 | 每轮检查 | partner 消失，VBUS 输出正确关闭，无工作项持续重试 |
 | 错误与资源 | 每组测试后检查 | 无 I2C 错误洪泛、GPIO 冲突、WARN/Oops、模块版本错误 |
 

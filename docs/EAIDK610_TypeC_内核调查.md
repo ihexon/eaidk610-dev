@@ -5,7 +5,7 @@
 > r1 已归档到 `archive/kernel-r1/`；详细结构见 `docs/构建架构与发布.md`。
 > 下文保留已经完成的故障调查与实机证据。
 
-日期：2026-09-06。对象：`ihexon@192.168.1.166`。初始调查阶段只做诊断；同日后续阶段已安装并启动测试内核，实机结果另列如下。overlay、供电声明、GPIO 和 extlinux 内容均未改动。
+日期：2026-09-06。对象：`ihexon@192.168.1.166`。初始调查阶段只做诊断；同日后续阶段已安装并启动测试内核，实机结果另列如下。该轮实机测试没有改动 overlay、供电声明、GPIO 和 extlinux 内容；2026-09-07 的后续 DTS 审查另行补充了 overlay，见下一节。
 
 后续执行环境于 2026-09-06 更新为 Docker 容器，工作区为 `/home/ihexon/eaidk610-dev`；该容器不是 EAIDK610，也不再把原本的 `eaidk02` 当作执行端。容器只用于源码、GitHub Actions 和远程部署组织；本报告的板上证据和结论仍指向 `.166`，不因执行端变更而改变。所有 `/boot`、`/sys/class/typec`、debugfs、角色切换和重启命令都只能在明确连接 `.166` 后执行，不得对容器本身执行。
 
@@ -18,6 +18,35 @@
 第一版补丁在未连接状态的 Rp 设置路径启用 FUSB302 fixed-source toggling，复用已有 TOGDONE 的双 CC Open/Rd/Ra 分类与通知；同时缓存 `set_roles()` 的 attached 状态，禁止已连接状态走该分支，以避开历史上的 PD power-role swap 回归。补丁由构建脚本复制到 Armbian 的 `userpatches/kernel/archive/rockchip64-7.1/`，再由 `compile.sh kernel` 应用到 `drivers/usb/typec/tcpm/fusb302.c`。固定输入和实现见仓库的 `kernel/build.env`、`kernel/patches/` 及 `.github/workflows/typec-test-kernel.yml`。
 
 当前结论仍限定为首轮验证通过，不能外推为全面验收完成。尚需正插、正反方向多次完整拔插、拔线后的 VBUS/partner 清理、连接电脑时的 Sink/Device、实际文件传输以及 USB3 测试。
+
+## 2026-09-07 DTS overlay 补充修复
+
+对 Linux 7.2 的 EAIDK610 基础 DTS、RK3399 Type-C PHY 驱动、主线音频
+binding 和板卡原理图重新核对后，确认原始 DTS 还有三项可由 overlay 修正的
+问题：
+
+1. `tcphy0_usb3` 的 `orientation-switch` 布尔属性没有被 RK3399 tcphy 驱动
+   使用。该驱动从 `tcphy0` 父节点的 `extcon` 取得 USB 角色和
+   `EXTCON_PROP_USB_TYPEC_POLARITY`；缺少它时默认按 DFP 和未翻转方向初始化。
+   overlay 现将 `eaidk_typec_bridge` 同时接到 `tcphy0`，不再把 USB2 的
+   480 Mbps 正反插结果外推成 USB3 已通过。
+2. 基础 DTS 把 `hp-det-gpios` 放在 RT5651 codec 节点，而主线 RT5651
+   driver/binding 不消费该属性。overlay 现把检测 GPIO 放到
+   `/rt5651-sound` 的 `simple-audio-card,hp-det-gpios`，并引用已有的
+   `rt5651_hpcon` pinctrl。
+3. 原理图注明 `HP_DET_H` 高电平表示耳机接入，原始 DTS 却声明
+   `GPIO_ACTIVE_LOW`；overlay 改为 GPIO4_D4 active-high。原来的
+   `spk-con-gpio` 同样不是主线 RT5651 属性，现由挂到 simple-audio-card
+   的 `simple-audio-amplifier` 驱动 GPIO0_B3，并把 PT5305 的供电描述为
+   `VCC5V0_SYS`。
+
+设备树 overlay 格式不能从基础 DTB 删除旧属性，因此 codec 节点中两个已被
+忽略的旧属性仍会存在；功能消费者已经改为主线支持的 simple-audio-card 和
+simple-audio-amplifier，不需要复制或禁用 RT5651 节点。DTBO 已在本地编译，
+并与带 symbols 的 EAIDK610 基础 DTB 成功合并；合并树已核对 `tcphy0.extcon`、
+GPIO4_D4 active-high、GPIO0_B3 active-high、放大器 5V supply 和声卡 aux
+路由。上述是静态验证，USB3 正反插、耳机插拔事件和扬声器播放仍需在包含新
+overlay 的镜像上实测。
 
 ## 测试内核部署与首轮实机结果
 

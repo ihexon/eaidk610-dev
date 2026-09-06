@@ -18,9 +18,7 @@
 				pd-disable;
 				typec-power-opmode = "1.5A";
 				self-powered;
-				/* Keep native USB3 orientation via the existing graph;
-				 * also notify the USB2/extcon bridge.
-				 */
+				/* Notify the extcon bridge about the connector orientation. */
 				orientation-switch = <&eaidk_typec_bridge>;
 			};
 		};
@@ -91,6 +89,68 @@
 				power-domains = <&power 24>;
 				extcon = <&eaidk_typec_bridge>;
 				status = "okay";
+			};
+		};
+	};
+	/* The RK3399 Type-C PHY driver gets both its USB role and SuperSpeed
+	 * lane orientation from extcon.  The orientation-switch boolean in the
+	 * upstream tcphy0_usb3 node is not consumed by this driver.
+	 */
+	fragment@6 {
+		target = <&tcphy0>;
+		__overlay__ {
+			extcon = <&eaidk_typec_bridge>;
+		};
+	};
+	/* GPIO0_B3 drives the PT5305 speaker amplifier enable input. */
+	fragment@7 {
+		target-path = "/";
+		__overlay__ {
+			eaidk_speaker_amp: audio-amplifier {
+				compatible = "simple-audio-amplifier";
+				enable-gpios = <&gpio0 11 0>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&eaidk_speaker_amp_enable>;
+				sound-name-prefix = "Speaker Amp";
+				VCC-supply = <&vcc5v0_sys>;
+			};
+		};
+	};
+	/* The upstream codec node carries legacy GPIO properties which the
+	 * mainline RT5651 driver does not consume.  Describe both functions on
+	 * their supported consumers instead: headphone detect on simple-card,
+	 * and speaker enable on a simple audio amplifier.  HP_DET_H is active
+	 * high according to the EAIDK-610 schematic.
+	 */
+	fragment@8 {
+		target-path = "/rt5651-sound";
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&rt5651_hpcon>;
+			simple-audio-card,aux-devs = <&eaidk_speaker_amp>;
+			simple-audio-card,hp-det-gpios = <&gpio4 28 0>;
+			simple-audio-card,widgets =
+				"Microphone", "Mic Jack",
+				"Headphone", "Headphones",
+				"Speaker", "Internal Speaker";
+			simple-audio-card,routing =
+				"Mic Jack", "MICBIAS1",
+				"IN1P", "Mic Jack",
+				"Headphones", "HPOL",
+				"Headphones", "HPOR",
+				"Internal Speaker", "Speaker Amp OUTL",
+				"Internal Speaker", "Speaker Amp OUTR",
+				"Speaker Amp INL", "HPOL",
+				"Speaker Amp INR", "HPOR";
+		};
+	};
+	fragment@9 {
+		target = <&pinctrl>;
+		__overlay__ {
+			eaidk-audio {
+				eaidk_speaker_amp_enable: speaker-amp-enable {
+					rockchip,pins = <0 11 0 &pcfg_pull_down>;
+				};
 			};
 		};
 	};

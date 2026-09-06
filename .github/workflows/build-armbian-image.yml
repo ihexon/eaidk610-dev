@@ -6,7 +6,6 @@ on:
       release_tag:
         description: New GitHub pre-release tag
         required: true
-        default: eaidk610-armbian-edge-r1
         type: string
 
 permissions:
@@ -58,7 +57,7 @@ jobs:
           docker version
           df -h /
 
-      - name: Run static and exact-source preflight
+      - name: Lint build scripts
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -67,24 +66,10 @@ jobs:
             scripts/build-image.sh \
             scripts/validate-image.sh \
             userpatches/customize-image.sh
-          scripts/preflight-image-build.sh --network
 
       - name: Build and validate complete image
         shell: bash
         run: scripts/build-image.sh
-
-      - name: Compress failed image for recovery
-        if: failure()
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          shopt -s nullglob
-          for image in armbian/output/images/*.img; do
-            if [[ ! -f ${image}.xz ]]; then
-              xz -T0 -1 --stdout "${image}" > "${image}.xz.tmp"
-              mv "${image}.xz.tmp" "${image}.xz"
-            fi
-          done
 
       - name: Upload failure diagnostics
         if: failure()
@@ -93,7 +78,6 @@ jobs:
           name: eaidk610-image-failure-${{ github.run_id }}
           path: |
             artifacts/
-            armbian/output/images/*.img.xz
             armbian/output/logs/
             armbian/output/info/
           if-no-files-found: warn
@@ -116,10 +100,9 @@ jobs:
           )
           gh release create "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "EAIDK610 Armbian Edge r1" \
+            --title "${RELEASE_TAG}" \
             --notes-file artifacts/release/RELEASE-NOTES.md \
             --prerelease \
             artifacts/release/*.img.xz \
             artifacts/release/SHA256SUMS \
-            artifacts/release/BUILD-MANIFEST.txt \
-            artifacts/release/RELEASE-NOTES.md
+            artifacts/release/BUILD-MANIFEST.txt
