@@ -1,0 +1,61 @@
+name: Build EAIDK610 Type-C test kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eaidk610-typec-test-kernel
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Native ARM64 kernel build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out fixed repository revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify runner and prepare packaging tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(dpkg --print-architecture)" = arm64
+          sudo apt-get update
+          sudo apt-get install --yes git jq zstd
+          sudo apt-get clean
+          mkdir -p artifacts
+          df -h /
+
+      - name: Build kernel with fixed Armbian patch set
+        shell: bash
+        run: |
+          set -o pipefail
+          scripts/build-test-kernel.sh 2>&1 | tee artifacts/build.log
+
+      - name: Collect failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          {
+            uname -a
+            dpkg --print-architecture
+            df -h
+            git status --short
+            find artifacts -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+          } > artifacts/failure-diagnostics.txt 2>&1
+
+      - name: Upload build products and diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eaidk610-typec-test
+          path: artifacts/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

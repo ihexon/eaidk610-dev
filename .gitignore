@@ -1,0 +1,5 @@
+/artifacts/
+/.cache/
+*.log
+*.deb
+*.tar.zst
