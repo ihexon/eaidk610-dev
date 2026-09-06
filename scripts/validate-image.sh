@@ -12,7 +12,9 @@ grep -Fq 'Building image' "${build_log}"
 
 first16m=$(mktemp /tmp/eaidk610-first16m.XXXXXX.bin)
 dd if="${image_path}" of="${first16m}" bs=1M count=16 status=none
-strings "${first16m}" | grep -Fq 'U-Boot 2026.10-rc3'
+first16m_strings=$(mktemp /tmp/eaidk610-first16m-strings.XXXXXX.txt)
+strings "${first16m}" > "${first16m_strings}"
+grep -Fq 'U-Boot 2026.10-rc3' "${first16m_strings}"
 
 partition_start=$(sfdisk --json "${image_path}" | jq -r '.partitiontable.partitions[0].start')
 [[ ${partition_start} =~ ^[0-9]+$ ]]
@@ -26,7 +28,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-root_partition=$(lsblk -nrpo NAME,TYPE "${loop_device}" | awk '$2 == "part" {print $1; exit}')
+root_partition=$(lsblk -nrpo NAME,TYPE "${loop_device}" | \
+	awk '$2 == "part" && first == "" {first=$1} END {print first}')
 [[ -b ${root_partition} ]]
 sudo mount -o ro "${root_partition}" "${mount_dir}"
 
@@ -35,10 +38,15 @@ grep -Fqx 'fdtfile=rockchip/rk3399-eaidk-610.dtb' "${mount_dir}/boot/armbianEnv.
 grep -Fqx 'user_overlays=rk3399-eaidk-610-typec-fix' "${mount_dir}/boot/armbianEnv.txt"
 test -s "${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo"
 test -s "${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dts"
-find "${mount_dir}/boot" -maxdepth 1 -type f -name 'vmlinuz-*edge-rockchip64' | grep -q .
-find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d -name '*edge-rockchip64' | grep -q .
+kernel_image=$(find "${mount_dir}/boot" -maxdepth 1 -type f \
+	-name 'vmlinuz-*edge-rockchip64' -print -quit)
+module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \
+	-name '*edge-rockchip64' -print -quit)
+[[ -s ${kernel_image} ]]
+[[ -d ${module_dir} ]]
 
-dtb_path=$(find "${mount_dir}/boot" -type f -path '*/rockchip/rk3399-eaidk-610.dtb' | head -n1)
+dtb_path=$(find "${mount_dir}/boot" -type f \
+	-path '*/rockchip/rk3399-eaidk-610.dtb' -print -quit)
 [[ -s ${dtb_path} ]]
 merged_dtb=$(mktemp /tmp/eaidk610-merged.XXXXXX.dtb)
 fdtoverlay -i "${dtb_path}" -o "${merged_dtb}" \

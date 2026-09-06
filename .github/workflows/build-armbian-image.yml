@@ -79,7 +79,7 @@ jobs:
         with:
           name: eaidk610-image-failure-${{ github.run_id }}
           path: |
-            artifacts/build.log
+            artifacts/
             armbian/output/logs/
             armbian/output/info/
           if-no-files-found: warn
@@ -94,7 +94,8 @@ jobs:
           set -Eeuo pipefail
           image_count=$(find artifacts/release -maxdepth 1 -type f -name '*.img.xz' | wc -l)
           test "${image_count}" -eq 1
-          find artifacts/release -maxdepth 1 -type f -size +2G -print -quit | (! grep -q .)
+          oversized_asset=$(find artifacts/release -maxdepth 1 -type f -size +2G -print -quit)
+          test -z "${oversized_asset}"
           (
             cd artifacts/release
             sha256sum --check SHA256SUMS

@@ -94,8 +94,10 @@ if [[ ${network_check} == yes ]]; then
 	git -C "${check_root}" apply --check "${patch_path}"
 
 	uboot_config_url="https://raw.githubusercontent.com/u-boot/u-boot/${ARMBIAN_UBOOT_COMMIT}/configs/eaidk-610-rk3399_defconfig"
+	uboot_config=$(mktemp /tmp/eaidk610-uboot-defconfig.XXXXXX)
 	curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-		"${uboot_config_url}" | grep -Fqx 'CONFIG_DEFAULT_FDT_FILE="rockchip/rk3399-eaidk-610.dtb"'
+		--output "${uboot_config}" "${uboot_config_url}"
+	grep -Fqx 'CONFIG_DEFAULT_FDT_FILE="rockchip/rk3399-eaidk-610.dtb"' "${uboot_config}"
 	resolved_uboot=$(git ls-remote https://github.com/u-boot/u-boot.git \
 		"refs/tags/${ARMBIAN_UBOOT_TAG}^{}" | awk '{print $1}')
 	[[ ${resolved_uboot} == "${ARMBIAN_UBOOT_COMMIT}" ]] || fail 'U-Boot tag moved or is unavailable'
@@ -113,15 +115,30 @@ if [[ ${network_check} == yes ]]; then
 	install -d "${armbian_userpatches}"
 	cp -a "${repo_root}/userpatches/." "${armbian_userpatches}/"
 	diff -qr "${repo_root}/userpatches" "${armbian_userpatches}"
+	install -d "${repo_root}/artifacts/diagnostics"
+	config_dump_raw="${repo_root}/artifacts/diagnostics/preflight-config-dump.raw.log"
 	config_dump=$(mktemp /tmp/eaidk610-configdump.XXXXXX.json)
 	CONFIG_DEFS_ONLY=yes "${repo_root}/armbian/compile.sh" config-dump \
 		BOARD="${ARMBIAN_BOARD}" BRANCH="${ARMBIAN_BRANCH}" \
 		RELEASE="${ARMBIAN_RELEASE}" BUILD_MINIMAL="${ARMBIAN_BUILD_MINIMAL}" \
-		BUILD_DESKTOP=no > "${config_dump}"
-	jq -e --arg series "${ARMBIAN_KERNEL_SERIES}" --arg tag "tag:${ARMBIAN_UBOOT_TAG}" '
+		BUILD_DESKTOP=no KERNEL_CONFIGURE=no \
+		KERNELBRANCH="commit:${linux_commit}" EXTRAWIFI=no \
+		COMPRESS_OUTPUTIMAGE=sha,img ARTIFACT_IGNORE_CACHE=yes SHARE_LOG=no \
+		> "${config_dump_raw}"
+	# Armbian emits GitHub workflow commands on stdout under Actions. Keep the
+	# raw stream for diagnostics and select only its one configuration object.
+	jq -R -c \
+		'fromjson? | select(type == "object" and has("KERNEL_MAJOR_MINOR"))' \
+		"${config_dump_raw}" > "${config_dump}"
+	[[ $(wc -l < "${config_dump}") -eq 1 ]] || fail 'config-dump did not emit exactly one configuration object'
+	jq -e --arg series "${ARMBIAN_KERNEL_SERIES}" \
+		--arg kernel_commit "commit:${linux_commit}" \
+		--arg tag "tag:${ARMBIAN_UBOOT_TAG}" '
 		.KERNEL_MAJOR_MINOR == $series and
-		.KERNELBRANCH == ("branch:linux-" + $series + ".y") and
 		.KERNELPATCHDIR == ("archive/rockchip64-" + $series) and
+		(.WANT_ARTIFACT_KERNEL_INPUTS_ARRAY |
+			index("\u0027KERNELBRANCH=" + $kernel_commit + "\u0027") != null) and
+		(.WANT_ARTIFACT_KERNEL_INPUTS_ARRAY | index("\u0027EXTRAWIFI=no\u0027") != null) and
 		.BOOTCONFIG == "eaidk-610-rk3399_defconfig" and
 		.BOOTBRANCH == $tag and
 		.BOOTPATCHDIR == "eaidk610-v2026.10-rc3" and
