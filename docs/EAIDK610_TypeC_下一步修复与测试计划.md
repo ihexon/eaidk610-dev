@@ -13,6 +13,7 @@
 | USB3 PHY 描述 | `tcphy0` 已在 overlay 中连接 Type-C extcon bridge |
 | 耳机检测 | 已在 overlay 中改为 simple-audio-card GPIO4_D4 高有效 |
 | 扬声器使能 | 已在 overlay 中改为 simple-audio-amplifier GPIO0_B3 高有效 |
+| 发布组成 | 同一次完整镜像构建交付 image、四个内核 DEB 和 board overlay DEB |
 
 ## 尚未完成
 
@@ -29,6 +30,6 @@
 
 ## 当前交付边界
 
-活动交付是完整 Armbian image，不再维护独立 kernel-only 发布路线。当前 Docker
-容器不是测试板；USB3 和音频的新 overlay 修复尚未部署到 `.166`，因此只能标记
-为静态验证通过，不能标记为硬件验收完成。
+活动交付是完整 Armbian image 及同一次构建产生的内核/board DEB，不维护独立的
+kernel-only 构建路线。当前 Docker 容器不是测试板；USB3 和音频的新 overlay
+修复尚未部署到 `.166`，因此只能标记为静态验证通过，不能标记为硬件验收完成。

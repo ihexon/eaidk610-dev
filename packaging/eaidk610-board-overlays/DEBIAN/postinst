@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -eu
+
+overlay_name=rk3399-eaidk-610-typec-fix
+root_prefix=${EAIDK610_ROOT_PREFIX:-}
+armbian_env=${root_prefix}/boot/armbianEnv.txt
+
+if [ -f "${armbian_env}" ]; then
+	user_overlays=$(sed -n 's/^user_overlays=//p' "${armbian_env}" | tail -n 1)
+	case " ${user_overlays} " in
+		*" ${overlay_name} "*) ;;
+		*) user_overlays="${user_overlays:+${user_overlays} }${overlay_name}" ;;
+	esac
+	sed -i '/^user_overlays=/d' "${armbian_env}"
+	printf 'user_overlays=%s\n' "${user_overlays}" >> "${armbian_env}"
+fi
+
+exit 0

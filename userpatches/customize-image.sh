@@ -8,15 +8,14 @@ if [[ ${board} != eaidk610 ]]; then
 	exit 2
 fi
 
-overlay_name=rk3399-eaidk-610-typec-fix
 root_prefix=${EAIDK610_ROOT_PREFIX:-}
-overlay_source=${root_prefix}/tmp/overlay/boot/overlay-user
-overlay_target=${root_prefix}/boot/overlay-user
-armbian_env=${root_prefix}/boot/armbianEnv.txt
+package=${root_prefix}/tmp/overlay/eaidk610-board-overlays.deb
 
-install -d -m 0755 "${overlay_target}"
-install -m 0644 "${overlay_source}/${overlay_name}.dtbo" \
-	"${overlay_target}/${overlay_name}.dtbo"
-
-sed -i '/^user_overlays=/d' "${armbian_env}"
-printf 'user_overlays=%s\n' "${overlay_name}" >> "${armbian_env}"
+if [[ -n ${root_prefix} ]]; then
+	dpkg-deb --extract "${package}" "${root_prefix}"
+	dpkg-deb --control "${package}" "${root_prefix}/tmp/overlay-package-control"
+	EAIDK610_ROOT_PREFIX=${root_prefix} \
+		"${root_prefix}/tmp/overlay-package-control/postinst" configure
+else
+	dpkg -i "${package}"
+fi

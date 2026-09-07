@@ -55,9 +55,11 @@ jobs:
           set -Eeuo pipefail
           shellcheck -S warning \
             scripts/preflight-image-build.sh \
+            scripts/build-board-overlay-package.sh \
             scripts/build-image.sh \
             scripts/validate-image.sh \
-            userpatches/customize-image.sh
+            userpatches/customize-image.sh \
+            packaging/eaidk610-board-overlays/DEBIAN/postinst
 
       - name: Build and validate complete image
         shell: bash
@@ -88,5 +90,10 @@ jobs:
             --notes-file artifacts/release/RELEASE-NOTES.md \
             --prerelease \
             artifacts/release/eaidk610-armbian-edge.img.xz \
+            artifacts/release/linux-image-eaidk610-edge.deb \
+            artifacts/release/linux-dtb-eaidk610-edge.deb \
+            artifacts/release/linux-headers-eaidk610-edge.deb \
+            artifacts/release/linux-libc-dev-eaidk610-edge.deb \
+            artifacts/release/eaidk610-board-overlays.deb \
             artifacts/release/SHA256SUMS \
             artifacts/release/BUILD-MANIFEST.txt

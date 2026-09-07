@@ -48,6 +48,10 @@ grep -Fqx 'user_overlays=rk3399-eaidk-610-typec-fix' "${mount_dir}/boot/armbianE
 	fail 'armbianEnv.txt does not enable the Type-C overlay'
 test -s "${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo" || \
 	fail 'compiled Type-C overlay is missing from the image'
+overlay_owner=$(dpkg-query --admindir="${mount_dir}/var/lib/dpkg" -S \
+	/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo | cut -d: -f1)
+[[ ${overlay_owner} == eaidk610-board-overlays ]] || \
+	fail 'Type-C overlay is not owned by the EAIDK610 board package'
 kernel_image=$(find "${mount_dir}/boot" -maxdepth 1 -type f \
 	-name 'vmlinuz-*edge-rockchip64' -print -quit)
 module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \

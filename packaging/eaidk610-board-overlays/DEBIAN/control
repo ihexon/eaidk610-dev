@@ -1,0 +1,9 @@
+Package: eaidk610-board-overlays
+Version: 1.0.0
+Architecture: all
+Maintainer: ihexon <zzheasy@gmail.com>
+Section: kernel
+Priority: optional
+Description: EAIDK610 board device-tree overlays
+ Board fixes for Type-C role switching, USB3 PHY orientation, headphone
+ detection, and speaker amplifier control.

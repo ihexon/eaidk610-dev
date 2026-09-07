@@ -37,6 +37,8 @@ source toggling、测得 `cc1=Ra, cc2=Rd`，TCPM 随后进入 `SRC_ATTACHED` 和
   `VCC5V0_SYS` 供电。
 - 上述修复均已进入同一个项目 overlay。基础 DTB 中不受支持的旧属性仍存在，
   但不再是功能消费者。
+- 历史 kernel-only r1 的 `linux-dtb` 包不含该项目 overlay。当前流程将 overlay
+  构建为 `eaidk610-board-overlays.deb`，完整镜像安装此包并默认启用。
 
 ## 验证边界
 

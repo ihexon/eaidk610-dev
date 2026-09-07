@@ -8,8 +8,9 @@
 - Use the pinned `armbian/` submodule and Armbian's standard `userpatches/`
   interface. Do not modify the submodule or maintain a parallel raw-Kbuild
   release path.
-- The only deliverable is the complete Armbian image. Historical kernel-only
-  releases are records, not a second build pipeline.
+- The active deliverables are the complete Armbian image and the kernel/board
+  DEBs produced by that same build. Historical kernel-only releases are
+  records, not a second build pipeline.
 
 ## Build and validation
 
@@ -40,7 +41,8 @@
 
 ## Release files
 
-- Publish the complete image as `eaidk610-armbian-edge.img.xz`.
+- Publish the complete image as `eaidk610-armbian-edge.img.xz`; publish its
+  image, DTB, headers, libc-dev, and board DEBs with short stable names.
 - Do not expose Armbian's internal artifact fingerprint in user-facing
   filenames.
 - Keep detailed version and source provenance in `BUILD-MANIFEST.txt`.

@@ -18,5 +18,6 @@ Linux 7.1.8 kernel-only r1 是 FUSB302 Try.Source 修复的已验证历史版本
 该内核已在 EAIDK610 启动。OnePlus 8T 反向连接时自动达到 Source/Host，并以
 USB2 480 Mbps 枚举；驱动日志证明新的 Rd 检测路径实际执行。
 
-此版本保持 pre-release，因为完整正反插、断开/VBUS、Sink/Device、数据传输
-和 USB3 回归没有完成。活动交付现已改为完整 Armbian image。
+此版本的 `linux-dtb` 包不含后续项目 overlay。它保持 pre-release，因为完整
+正反插、断开/VBUS、Sink/Device、数据传输和 USB3 回归没有完成。活动流程现以
+一次 Armbian 构建同时交付完整 image、内核 DEB 和 board overlay DEB。

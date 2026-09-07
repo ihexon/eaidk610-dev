@@ -44,24 +44,26 @@ overlay_source="${repo_root}/${TYPEC_OVERLAY_SOURCE}"
 [[ -s ${overlay_source} ]] || fail 'board overlay is missing'
 [[ -d ${repo_root}/userpatches/u-boot/${BOOTPATCHDIR} ]] || fail 'U-Boot patch directory is missing'
 
-for tool in dtc fdtoverlay fdtget jq sfdisk strings xz; do
+for tool in dpkg-deb dtc fdtoverlay fdtget jq sfdisk strings xz; do
 	command -v "${tool}" >/dev/null || fail "required validation tool is unavailable: ${tool}"
 done
 preflight_tmp=$(mktemp -d /tmp/eaidk610-preflight.XXXXXX)
 trap 'rm -rf -- "${preflight_tmp}"' EXIT
-overlay_check="${preflight_tmp}/${TYPEC_OVERLAY_NAME}.dtbo"
-dtc -q -@ -I dts -O dtb -o "${overlay_check}" "${overlay_source}"
+overlay_package="${repo_root}/userpatches/overlay/eaidk610-board-overlays.deb"
+"${repo_root}/scripts/build-board-overlay-package.sh" "${overlay_package}" >/dev/null
+[[ $(dpkg-deb --field "${overlay_package}" Package) == eaidk610-board-overlays ]]
 
 customizer_root="${preflight_tmp}/root"
-install -D -m 0644 "${overlay_check}" \
-	"${customizer_root}/tmp/overlay/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo"
+install -D -m 0644 "${overlay_package}" \
+	"${customizer_root}/tmp/overlay/eaidk610-board-overlays.deb"
 install -D -m 0644 /dev/null "${customizer_root}/boot/armbianEnv.txt"
 printf 'fdtfile=rockchip/rk3399-eaidk-610.dtb\nuser_overlays=obsolete\n' \
 	> "${customizer_root}/boot/armbianEnv.txt"
 EAIDK610_ROOT_PREFIX=${customizer_root} "${repo_root}/userpatches/customize-image.sh" \
 	"${ARMBIAN_RELEASE}" rockchip64 "${ARMBIAN_BOARD}" no arm64
-grep -Fqx "user_overlays=${TYPEC_OVERLAY_NAME}" \
-	"${customizer_root}/boot/armbianEnv.txt"
+configured_overlays=$(sed -n 's/^user_overlays=//p' \
+	"${customizer_root}/boot/armbianEnv.txt")
+[[ " ${configured_overlays} " == *" ${TYPEC_OVERLAY_NAME} "* ]]
 [[ -s ${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo ]]
 
 printf 'EAIDK610_IMAGE_PREFLIGHT_OK\n'
