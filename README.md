@@ -1,77 +1,52 @@
-<h3 align="center">
-  <a href=#><img src="https://raw.githubusercontent.com/armbian/.github/master/profile/logosmall.png" alt="Armbian logo"></a>
-  <br><br>
-</h3>
+# EAIDK610 Armbian
 
-## Purpose of This Repository
+Armbian images and kernel packages for the OPEN AI LAB EAIDK-610 (RK3399).
+This repository is derived from the Armbian build framework and adds native
+EAIDK610 board support. It contains the framework itself, not a submodule or an
+external build wrapper. Board fixes use the standard kernel patch and BSP flows.
 
-The **Armbian Linux Build Framework** creates customizable OS images based on **Debian** or **Ubuntu** for **single-board computers (SBCs)** and embedded devices.
+## Downloads
 
-It builds a complete Linux system including kernel, bootloader, and root filesystem, giving you control over versions, configuration, firmware, device trees, and system optimizations.
+[GitHub Releases](https://github.com/ihexon/eaidk610-dev/releases) provide a
+complete bootable image and the kernel packages produced by the same build.
 
-The framework supports **native**, **cross**, and **containerized** builds for multiple architectures (`x86_64`, `aarch64`, `armhf`, `riscv64`) and is suitable for development, testing, production, or automation.
+| File | Contents |
+| --- | --- |
+| `eaidk610-armbian-edge.img.xz` | Complete Armbian image, including U-Boot |
+| `linux-image-eaidk610-edge.deb` | Kernel and modules |
+| `linux-dtb-eaidk610-edge.deb` | Device trees |
+| `linux-headers-eaidk610-edge.deb` | Kernel headers |
+| `linux-libc-dev-eaidk610-edge.deb` | Linux userspace API headers |
+| `armbian-bsp-eaidk610-edge.deb` | Native Armbian board support, board overlay, and Bluetooth firmware alias |
+| `SHA256SUMS`, `BUILD-MANIFEST.txt` | Download checksums and build provenance |
 
-> **Looking for prebuilt images?** Use [Armbian Imager](https://github.com/armbian/imager/releases) — the easiest way to download and flash Armbian to your SD card or USB drive. Available for Linux, macOS, and Windows.
+The full image includes the board package and enables its overlay by default.
+Releases are marked as pre-releases while hardware coverage remains limited.
 
-## Quick Start
+The native BSP replaces the former standalone overlay package in new releases.
+Existing systems must remove `eaidk610-board-overlays` before installing the new
+BSP to avoid file ownership conflicts. Installing DEBs does not migrate their
+boot configuration automatically.
 
-```bash
-git clone https://github.com/armbian/build
-cd build
-./compile.sh
-```
+## System
 
-<a href="#how-to-build-an-image-or-a-kernel"><img src=".github/README.gif" alt="Build demonstration" width="100%"></a>
+- Debian Trixie Minimal, ARM64.
+- Armbian rockchip64 edge, Linux 7.2 stable series.
+- Upstream U-Boot `v2026.10-rc3`, mainline TPL/SPL, and Rockchip BL31 v1.36.
+- Native extlinux boot with one entry and the board overlay enabled by default.
+- EAIDK610 fixes for Type-C role switching, USB3 PHY orientation, RT5651 audio,
+  HDMI supplies and audio, SD card supplies and UHS modes, serial console
+  initialization, and Bluetooth firmware lookup.
 
-## Build Host Requirements
+## Documentation
 
-### Hardware
-- **RAM:** ≥8GB (less with `KERNEL_BTF=no`)
-- **Disk:** ~50GB free space
-- **Architecture:** x86_64, aarch64, or riscv64
+- [Build and release](docs/build.md)
+- [Hardware support](docs/hardware.md)
 
-### Operating System
-- **Native builds:** Armbian/Debian 13 (Trixie)
-- **Containerized:** Any Docker-capable Linux
-- **Windows:** WSL2 with Armbian/Debian 13 (Trixie)
+Based on [armbian/build](https://github.com/armbian/build), upstream commit
+`66dbc7af2a77d52ccd3fe2156a55687622848ea3`. Upstream licensing and attribution
+are retained in [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md).
 
-### Software
-- Superuser privileges (`sudo` or root)
-- Up-to-date system (outdated Docker or other tools can cause failures)
-
-## Resources
-
-- **[Documentation](https://docs.armbian.com/Developer-Guide_Overview/)** — Comprehensive guides for building, configuring, and customizing
-- **[Website](https://www.armbian.com)** — News, features, and board information
-- **[Blog](https://blog.armbian.com)** — Development updates and technical articles
-- **[Forums](https://forum.armbian.com)** — Community support and discussions
-
-## Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on reporting issues, submitting changes, and contributing code.
-
-## Support
-
-### Community Forums
-Get help from users and contributors on troubleshooting, configuration, and development.
-👉 [forum.armbian.com](https://forum.armbian.com)
-
-### Real-time Chat
-Join discussions with developers and community members on IRC or Discord.
-👉 [Community Chat](https://docs.armbian.com/Community_IRC/)
-
-### Paid Consultation
-For commercial projects, guaranteed response times, or advanced needs, paid support is available from Armbian maintainers.
-👉 [Contact us](https://www.armbian.com/contact)
-
-## Contributors
-
-Thank you to everyone who has contributed to Armbian!
-
-<a href="https://github.com/armbian/build/graphs/contributors">
-  <img alt="Contributors" src="https://contrib.rocks/image?repo=armbian/build" />
-</a>
-
-## Armbian Partners
-
-Our [partnership program](https://forum.armbian.com/subscriptions) supports Armbian's development and community. Learn more about [our Partners](https://armbian.com/partners).
+Report problems through [GitHub Issues](https://github.com/ihexon/eaidk610-dev/issues)
+with the release tag, kernel version, relevant kernel messages, and connected
+hardware. Remove credentials and private machine details from logs.

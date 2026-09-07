@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ihexon <zzheasy@gmail.com>
+Date: Sun, 6 Sep 2026 08:03:24 +0800
+Subject: [PATCH] usb: typec: fusb302: detect unattached source connection
+
+---
+ drivers/usb/typec/tcpm/fusb302.c | 34 +++++++++++++++++++++++++++++---
+ 1 file changed, 31 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/usb/typec/tcpm/fusb302.c b/drivers/usb/typec/tcpm/fusb302.c
+index 9ab1277b7..74f5164b4 100644
+--- a/drivers/usb/typec/tcpm/fusb302.c
++++ b/drivers/usb/typec/tcpm/fusb302.c
+@@ -107,6 +107,7 @@ struct fusb302_chip {
+ 	bool charge_on;
+ 	bool pd_rx_on;
+ 	bool vbus_present;
++	bool attached;
+ 	enum typec_cc_polarity cc_polarity;
+ 	enum typec_cc_status cc1;
+ 	enum typec_cc_status cc2;
+@@ -630,7 +631,9 @@ static int tcpm_set_cc(struct tcpc_dev *dev, enum typec_cc_status cc)
+ 		goto done;
+ 	}
+ 
+-	fusb302_log(chip, "cc := %s", typec_cc_status_name[cc]);
++	fusb302_log(chip, "cc := %s, polarity=%d, attached=%s",
++		    typec_cc_status_name[cc], chip->cc_polarity,
++		    str_true_false(chip->attached));
+ 
+ 	ret = fusb302_set_toggling(chip, TOGGLING_MODE_OFF);
+ 	if (ret < 0) {
+@@ -697,6 +700,29 @@ static int tcpm_set_cc(struct tcpc_dev *dev, enum typec_cc_status cc)
+ 	default:
+ 		break;
+ 	}
++
++	/*
++	 * TCPM implements Try.Source in software by changing from Rd to Rp
++	 * without calling start_toggling().  The FUSB302 get_cc callback only
++	 * returns cached values, so an Rd which is already present can be missed
++	 * after the cache is cleared above.  Use the chip's fixed-source toggle
++	 * engine while unattached; TOGDONE then performs the full Open/Rd/Ra
++	 * classification for both CC pins and reports the result to TCPM.
++	 *
++	 * Do not start toggling while attached.  In particular, toggling here
++	 * would prevent PD messages from being sent during a power-role swap.
++	 */
++	if (!chip->attached &&
++	    (cc == TYPEC_CC_RP_DEF || cc == TYPEC_CC_RP_1_5 ||
++	     cc == TYPEC_CC_RP_3_0)) {
++		fusb302_log(chip, "start unattached SRC toggling for %s",
++			    typec_cc_status_name[cc]);
++		ret = fusb302_set_toggling(chip, TOGGLING_MODE_SRC);
++		if (ret < 0)
++			fusb302_log(chip,
++				    "cannot start unattached SRC toggling, ret=%d",
++				    ret);
++	}
+ done:
+ 	mutex_unlock(&chip->lock);
+ 
+@@ -912,8 +938,10 @@ static int tcpm_set_roles(struct tcpc_dev *dev, bool attached,
+ 			    ret);
+ 		goto done;
+ 	}
+-	fusb302_log(chip, "pd header := %s, %s", typec_role_name[pwr],
+-		    typec_data_role_name[data]);
++	chip->attached = attached;
++	fusb302_log(chip, "pd header := %s, %s, attached=%s",
++		    typec_role_name[pwr], typec_data_role_name[data],
++		    str_true_false(attached));
+ done:
+ 	mutex_unlock(&chip->lock);
+ 
