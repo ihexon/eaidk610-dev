@@ -1,5 +1,6 @@
 /artifacts/
 /.cache/
+# Private investigation notes, deployment records, plans, and scratch files.
 /local/
 /references/**/*.pdf
 /tools/rkdeveloptool/

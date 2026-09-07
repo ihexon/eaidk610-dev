@@ -2,9 +2,9 @@
 
 ## Scope
 
-- The current workspace is a Docker container, not the EAIDK610.
-- The current test board is `ihexon@192.168.1.177` (historical tests used `.166`), and board
-  deployment, `/boot` changes, or reboot require an explicit user request.
+- Do not assume the development workspace is the EAIDK610. Use the test target
+  supplied by the user; keep connection details in ignored local notes.
+- Board deployment, `/boot` changes, or reboot require user authorization.
 - Use the pinned `armbian/` submodule and Armbian's standard `userpatches/`
   interface. Do not modify the submodule or maintain a parallel raw-Kbuild
   release path.
@@ -53,8 +53,7 @@
 
 ## Git, credentials, and remote operations
 
-- Use the HTTPS origin and the active GitHub account `ihexon`.
-- Commit as `ihexon <zzheasy@gmail.com>`.
+- Preserve the configured Git remote and commit identity.
 - Never store passwords, tokens, SSH private keys, or sudo credentials in the
   repository, scripts, command arguments, or logs.
 - Put complex board operations in a reviewed script, copy it to the board, and
@@ -63,11 +62,14 @@
 
 ## Documentation
 
-- README and current documents contain conclusions, current state, and
-  validation boundaries only.
+- README and public documents describe the project, supported interfaces,
+  build/release process, and hardware validation coverage.
 - Do not add conversational history, trial-and-error chronology, shell
   tutorials, or agent operating instructions to README or current documents.
-- Put durable agent workflow rules in this file. Put historical evidence in
-  `docs/history/` only when it remains useful; otherwise rely on Git history.
+- Put durable agent workflow rules in this file. Keep investigation notes,
+  task plans, deployment logs, and experiment records under `local/notes/`,
+  which is excluded by `.gitignore`. Do not force-add these files.
+- Do not publish private IP addresses, personal filesystem paths, session
+  transcripts, or per-machine task status in public documentation.
 - Keep documentation synchronized when a technical conclusion or validation
   status changes.

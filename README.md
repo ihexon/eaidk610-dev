@@ -1,35 +1,40 @@
-# EAIDK610 Armbian image
+# EAIDK610 Armbian
 
-This repository produces a directly bootable Armbian image for the OPEN AI LAB
-EAIDK-610 (RK3399).
+Armbian images and kernel packages for the OPEN AI LAB EAIDK-610 (RK3399).
+The project uses the official Armbian build framework with a small set of
+board-specific kernel patches and a device-tree overlay.
 
-Current image composition:
+## Downloads
 
-- Armbian `rockchip64` edge, Linux 7.2 stable series;
-- Debian Trixie Minimal;
-- upstream U-Boot `v2026.10-rc3` with mainline TPL/SPL and Rockchip BL31 v1.36;
-- the Armbian Rockchip patch stack, EAIDK610 FUSB302 Try.Source fix, and
-  RT5651 optional-interrupt fix;
-- upstream `rk3399-eaidk-610.dtb` plus one project-owned board overlay,
-  installed and enabled by `eaidk610-board-overlays.deb`.
+[GitHub Releases](https://github.com/ihexon/eaidk610-dev/releases) provide a
+complete bootable image and the kernel packages produced by the same build.
 
-The overlay provides managed Type-C VBUS/role switching, RK3399 USB3 PHY
-orientation through extcon, active-high GPIO4_D4 headphone detection, and an
-active-high GPIO0_B3 simple speaker amplifier. The board package also fixes
-RT5651 audio routes, the early serial console, and Bluetooth firmware lookup.
+| File | Contents |
+| --- | --- |
+| `eaidk610-armbian-edge.img.xz` | Complete Armbian image, including U-Boot |
+| `linux-image-eaidk610-edge.deb` | Kernel and modules |
+| `linux-dtb-eaidk610-edge.deb` | Device trees |
+| `linux-headers-eaidk610-edge.deb` | Kernel headers |
+| `linux-libc-dev-eaidk610-edge.deb` | Linux userspace API headers |
+| `eaidk610-board-overlays.deb` | Board overlay and Bluetooth firmware alias |
+| `SHA256SUMS`, `BUILD-MANIFEST.txt` | Download checksums and build provenance |
 
-The active build uses the pinned `armbian/` submodule and project changes under
-`userpatches/`. Linux 7.1 kernel-only r1 is retained only as a historical
-release record.
+The full image includes the board package and enables its overlay by default.
+Releases are marked as pre-releases while hardware coverage remains limited.
 
-Each release contains `eaidk610-armbian-edge.img.xz`, the image, DTB, headers,
-and libc-dev kernel DEBs, plus `eaidk610-board-overlays.deb`. Exact Armbian,
-Linux, U-Boot, patch, and overlay provenance is recorded in
-`BUILD-MANIFEST.txt`.
+## System
 
-The FUSB302 repair has passed an initial USB2 reverse-orientation board test.
-The complete Linux 7.2 image and merged device tree have passed offline
-validation. USB3 in both orientations, headphone events, and speaker playback
-still require hardware validation.
-Board package 1.0.1 has passed a reboot test on `.177`: the RT5651 card
-registers, earlycon initializes, and the Bluetooth firmware patch loads.
+- Debian Trixie Minimal, ARM64.
+- Armbian rockchip64 edge, Linux 7.2 stable series.
+- Upstream U-Boot `v2026.10-rc3`, mainline TPL/SPL, and Rockchip BL31 v1.36.
+- EAIDK610 fixes for Type-C role switching, USB3 PHY orientation, RT5651 audio,
+  serial console initialization, and Bluetooth firmware lookup.
+
+## Documentation
+
+- [Build and release](docs/build.md)
+- [Hardware support](docs/hardware.md)
+
+Report problems through [GitHub Issues](https://github.com/ihexon/eaidk610-dev/issues)
+with the release tag, kernel version, relevant kernel messages, and connected
+hardware. Remove credentials and private machine details from logs.
