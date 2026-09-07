@@ -39,6 +39,10 @@ source toggling、测得 `cc1=Ra, cc2=Rd`，TCPM 随后进入 `SRC_ATTACHED` 和
   但不再是功能消费者。
 - 历史 kernel-only r1 的 `linux-dtb` 包不含该项目 overlay。当前流程将 overlay
   构建为 `eaidk610-board-overlays.deb`，完整镜像安装此包并默认启用。
+- RT5651 DAPM 使用小写 `micbias1`；基础 DTS 中的大写 `MICBIAS1` 会阻止声卡
+  注册，现由 overlay 覆盖。board 包 `1.0.1` 已在 `.177` 验证声卡注册成功。
+- 板上未描述 codec 中断，耳机检测使用 simple-card GPIO。RT5651 驱动补丁
+  跳过 IRQ 0 申请，保留有效中断的正常处理。
 
 ## 验证边界
 

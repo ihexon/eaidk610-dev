@@ -81,6 +81,8 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf 'board=%s\nbranch=%s\nrelease=%s\n' "${ARMBIAN_BOARD}" "${ARMBIAN_BRANCH}" "${ARMBIAN_RELEASE}"
 	printf 'kernel_patch_sha256=%s\n' \
 		"$(sha256sum "${repo_root}/${KERNEL_PATCH}" | awk '{print $1}')"
+	printf 'rt5651_patch_sha256=%s\n' \
+		"$(sha256sum "${repo_root}/${RT5651_PATCH}" | awk '{print $1}')"
 	printf 'typec_overlay_source_sha256=%s\n' \
 		"$(sha256sum "${repo_root}/${TYPEC_OVERLAY_SOURCE}" | awk '{print $1}')"
 	printf 'board_overlay_package_sha256=%s\n' \
@@ -94,10 +96,12 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf '# EAIDK610 Armbian Edge image\n\n'
 	printf 'Directly bootable Armbian Trixie Minimal image for OPEN AI LAB EAIDK-610.\n\n'
 	printf -- '- Linux: Armbian edge %s with the EAIDK610 FUSB302 patch\n' "${ARMBIAN_KERNEL_SERIES}"
+	printf -- '- Audio: corrected RT5651 routes and no IRQ request for an unwired codec interrupt\n'
 	printf -- '- U-Boot: upstream %s binman image at LBA 64; U-Boot FIT at LBA 16384\n' "${ARMBIAN_UBOOT_TAG}"
 	printf -- '- Device tree: rockchip/rk3399-eaidk-610.dtb\n'
 	printf -- '- Kernel packages: image, DTB, headers, and libc development files\n'
 	printf -- '- Board package: eaidk610-board-overlays.deb, installed and enabled by default\n'
+	printf -- '- Boot fixes: serial stdout-path and EAIDK610 Bluetooth firmware alias\n'
 	printf -- '- Board overlay: Type-C extcon/role switching, USB3 PHY orientation, headphone detection, and speaker amplifier GPIO\n\n'
 	printf 'Verify the download with `sha256sum -c SHA256SUMS`, decompress it, then write the entire image to eMMC or removable media. This is a pre-release until the complete hardware regression matrix is finished.\n'
 } > "${release_dir}/RELEASE-NOTES.md"

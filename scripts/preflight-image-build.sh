@@ -65,5 +65,10 @@ configured_overlays=$(sed -n 's/^user_overlays=//p' \
 	"${customizer_root}/boot/armbianEnv.txt")
 [[ " ${configured_overlays} " == *" ${TYPEC_OVERLAY_NAME} "* ]]
 [[ -s ${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo ]]
+# RT5651 DAPM widget names are case-sensitive; MICBIAS1 prevents card registration.
+audio_routing=$(fdtget -t s \
+	"${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo" \
+	/fragment@8/__overlay__ simple-audio-card,routing)
+[[ ${audio_routing} == *"Mic Jack micbias1"* ]] || fail 'incorrect RT5651 micbias route'
 
 printf 'EAIDK610_IMAGE_PREFLIGHT_OK\n'

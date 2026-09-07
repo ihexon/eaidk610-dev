@@ -134,7 +134,7 @@
 				"Headphone", "Headphones",
 				"Speaker", "Internal Speaker";
 			simple-audio-card,routing =
-				"Mic Jack", "MICBIAS1",
+				"Mic Jack", "micbias1",
 				"IN1P", "Mic Jack",
 				"Headphones", "HPOL",
 				"Headphones", "HPOR",
@@ -151,6 +151,15 @@
 				eaidk_speaker_amp_enable: speaker-amp-enable {
 					rockchip,pins = <0 11 0 &pcfg_pull_down>;
 				};
+			};
+		};
+	};
+	/* Allow bare earlycon to locate the board's serial console. */
+	fragment@10 {
+		target-path = "/";
+		__overlay__ {
+			chosen {
+				stdout-path = "/serial@ff1a0000:1500000n8";
 			};
 		};
 	};

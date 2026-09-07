@@ -3,7 +3,7 @@
 ## Scope
 
 - The current workspace is a Docker container, not the EAIDK610.
-- The only board used for hardware tests is `ihexon@192.168.1.166`, and board
+- The current test board is `ihexon@192.168.1.177` (historical tests used `.166`), and board
   deployment, `/boot` changes, or reboot require an explicit user request.
 - Use the pinned `armbian/` submodule and Armbian's standard `userpatches/`
   interface. Do not modify the submodule or maintain a parallel raw-Kbuild
@@ -36,6 +36,8 @@
 - The overlay must keep `tcphy0` connected to the Type-C extcon bridge.
 - Headphone detection belongs on `simple-audio-card` as active-high GPIO4_D4.
 - Speaker enable belongs to `simple-audio-amplifier` as active-high GPIO0_B3.
+- RT5651 audio routes must use the case-sensitive DAPM name `micbias1`.
+- Do not invent a codec interrupt in the DT; jack detection uses simple-card GPIO.
 - Do not claim USB3 orientation, headphone detection, or speaker playback as
   hardware-verified until they are tested on the board.
 

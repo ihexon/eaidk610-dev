@@ -9,11 +9,13 @@
 | FUSB302 修复 | Linux 7.1.8 r1 已编译、安装并在 `.166` 启动 |
 | 自动角色 | 一次反向、带手机启动场景自动达到 Source/Host |
 | USB2 | OnePlus 8T 已以 480 Mbps 枚举 |
-| 完整镜像 | Linux 7.2.3 Armbian image r2 构建与离线校验成功 |
+| 完整镜像 | r4 已成功发布完整镜像、四个内核 DEB 和 board DEB |
 | USB3 PHY 描述 | `tcphy0` 已在 overlay 中连接 Type-C extcon bridge |
 | 耳机检测 | 已在 overlay 中改为 simple-audio-card GPIO4_D4 高有效 |
 | 扬声器使能 | 已在 overlay 中改为 simple-audio-amplifier GPIO0_B3 高有效 |
 | 发布组成 | 同一次完整镜像构建交付 image、四个内核 DEB 和 board overlay DEB |
+| 声卡注册 | `.177` 的 board 包 1.0.1 已修正 micbias1 路由，播放/录音 PCM 已出现 |
+| 启动与蓝牙 | `.177` 已验证 earlycon 初始化和蓝牙固件 build 0230 加载 |
 
 ## 尚未完成
 
@@ -31,5 +33,6 @@
 ## 当前交付边界
 
 活动交付是完整 Armbian image 及同一次构建产生的内核/board DEB，不维护独立的
-kernel-only 构建路线。当前 Docker 容器不是测试板；USB3 和音频的新 overlay
-修复尚未部署到 `.166`，因此只能标记为静态验证通过，不能标记为硬件验收完成。
+kernel-only 构建路线。当前 Docker 容器不是测试板，当前实机为 `.177`。
+board 包已安装并重启验证；声卡注册成功不代表耳机插拔、实际发声或 USB3
+双方向数据传输已经通过验收。RT5651 无中断驱动补丁待新内核验证。

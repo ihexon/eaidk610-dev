@@ -1,9 +1,11 @@
 Package: eaidk610-board-overlays
-Version: 1.0.0
+Version: 1.0.1
 Architecture: all
 Maintainer: ihexon <zzheasy@gmail.com>
 Section: kernel
 Priority: optional
+Depends: armbian-firmware
 Description: EAIDK610 board device-tree overlays
  Board fixes for Type-C role switching, USB3 PHY orientation, headphone
- detection, and speaker amplifier control.
+ detection, speaker amplifier control, and serial console setup.
+ Includes the board-specific Bluetooth firmware alias.
