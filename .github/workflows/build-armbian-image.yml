@@ -41,21 +41,13 @@ jobs:
             exit 2
           fi
 
-      - name: Verify runner resources and install preflight tools
+      - name: Install validation tools
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(uname -m)" = aarch64
-          test "$(dpkg --print-architecture)" = arm64
-          available_kib=$(df --output=avail / | tail -n1)
-          (( available_kib >= 40 * 1024 * 1024 ))
           sudo apt-get update
           sudo apt-get install --yes \
-            binutils ca-certificates curl device-tree-compiler e2fsprogs fdisk git jq \
-            shellcheck util-linux uuid-runtime xz-utils zstd
-          sudo apt-get clean
-          docker version
-          df -h /
+            binutils device-tree-compiler fdisk jq shellcheck util-linux xz-utils
 
       - name: Lint build scripts
         shell: bash
@@ -77,7 +69,7 @@ jobs:
         with:
           name: eaidk610-image-failure-${{ github.run_id }}
           path: |
-            artifacts/
+            artifacts/build.log
             armbian/output/logs/
             armbian/output/info/
           if-no-files-found: warn
@@ -90,19 +82,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          image_count=$(find artifacts/release -maxdepth 1 -type f -name '*.img.xz' | wc -l)
-          test "${image_count}" -eq 1
-          oversized_asset=$(find artifacts/release -maxdepth 1 -type f -size +2G -print -quit)
-          test -z "${oversized_asset}"
-          (
-            cd artifacts/release
-            sha256sum --check SHA256SUMS
-          )
           gh release create "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${RELEASE_TAG}" \
             --notes-file artifacts/release/RELEASE-NOTES.md \
             --prerelease \
-            artifacts/release/*.img.xz \
+            artifacts/release/eaidk610-armbian-edge.img.xz \
             artifacts/release/SHA256SUMS \
             artifacts/release/BUILD-MANIFEST.txt

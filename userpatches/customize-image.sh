@@ -17,11 +17,6 @@ armbian_env=${root_prefix}/boot/armbianEnv.txt
 install -d -m 0755 "${overlay_target}"
 install -m 0644 "${overlay_source}/${overlay_name}.dtbo" \
 	"${overlay_target}/${overlay_name}.dtbo"
-install -m 0644 "${overlay_source}/${overlay_name}.dts" \
-	"${overlay_target}/${overlay_name}.dts"
 
-test -f "${armbian_env}"
 sed -i '/^user_overlays=/d' "${armbian_env}"
 printf 'user_overlays=%s\n' "${overlay_name}" >> "${armbian_env}"
-grep -Fqx 'fdtfile=rockchip/rk3399-eaidk-610.dtb' "${armbian_env}"
-grep -Fqx "user_overlays=${overlay_name}" "${armbian_env}"

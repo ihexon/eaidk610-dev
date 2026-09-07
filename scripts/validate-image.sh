@@ -11,9 +11,19 @@ fail() {
 image_path=$1
 [[ -f ${image_path} ]] || fail "image does not exist: ${image_path}"
 
-first16m=$(mktemp /tmp/eaidk610-first16m.XXXXXX.bin)
+validate_tmp=$(mktemp -d /tmp/eaidk610-validate.XXXXXX)
+mount_dir="${validate_tmp}/root"
+loop_device=
+cleanup() {
+	if mountpoint -q "${mount_dir}"; then sudo umount "${mount_dir}"; fi
+	if [[ -n ${loop_device} ]]; then sudo losetup --detach "${loop_device}" 2>/dev/null || true; fi
+	rm -rf -- "${validate_tmp}"
+}
+trap cleanup EXIT
+
+first16m="${validate_tmp}/first16m.bin"
 dd if="${image_path}" of="${first16m}" bs=1M count=16 status=none
-first16m_strings=$(mktemp /tmp/eaidk610-first16m-strings.XXXXXX.txt)
+first16m_strings="${validate_tmp}/first16m-strings.txt"
 strings "${first16m}" > "${first16m_strings}"
 grep -Fq 'U-Boot 2026.10-rc3' "${first16m_strings}" || \
 	fail 'expected U-Boot version was not found in the first 16 MiB'
@@ -23,12 +33,7 @@ partition_start=$(sfdisk --json "${image_path}" | jq -r '.partitiontable.partiti
 (( partition_start >= 32768 )) || fail 'first partition overlaps the bootloader area'
 
 loop_device=$(sudo losetup --find --show --partscan --read-only "${image_path}")
-mount_dir=$(mktemp -d /tmp/eaidk610-image.XXXXXX)
-cleanup() {
-	if mountpoint -q "${mount_dir}"; then sudo umount "${mount_dir}"; fi
-	sudo losetup --detach "${loop_device}" 2>/dev/null || true
-}
-trap cleanup EXIT
+mkdir "${mount_dir}"
 
 root_partition=$(lsblk -nrpo NAME,TYPE "${loop_device}" | \
 	awk '$2 == "part" && first == "" {first=$1} END {print first}')
@@ -43,8 +48,6 @@ grep -Fqx 'user_overlays=rk3399-eaidk-610-typec-fix' "${mount_dir}/boot/armbianE
 	fail 'armbianEnv.txt does not enable the Type-C overlay'
 test -s "${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo" || \
 	fail 'compiled Type-C overlay is missing from the image'
-test -s "${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dts" || \
-	fail 'Type-C overlay source is missing from the image'
 kernel_image=$(find "${mount_dir}/boot" -maxdepth 1 -type f \
 	-name 'vmlinuz-*edge-rockchip64' -print -quit)
 module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \
@@ -55,7 +58,7 @@ module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \
 dtb_path=$(find "${mount_dir}/boot" -type f \
 	-path '*/rockchip/rk3399-eaidk-610.dtb' -print -quit)
 [[ -s ${dtb_path} ]] || fail 'EAIDK610 base DTB is missing'
-merged_dtb=$(mktemp /tmp/eaidk610-merged.XXXXXX.dtb)
+merged_dtb="${validate_tmp}/merged.dtb"
 fdtoverlay -i "${dtb_path}" -o "${merged_dtb}" \
 	"${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo" || \
 	fail 'Type-C overlay cannot be applied to the final EAIDK610 DTB'

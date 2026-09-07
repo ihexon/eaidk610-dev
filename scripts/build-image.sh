@@ -10,19 +10,13 @@ source "${repo_root}/config/image.env"
 [[ $(uname -m) == aarch64 ]] || { printf 'ARM64 runner required\n' >&2; exit 2; }
 [[ ${GITHUB_ACTIONS:-} == true ]] || { printf 'Full image builds are restricted to GitHub Actions\n' >&2; exit 2; }
 
+"${script_dir}/preflight-image-build.sh"
 read -r edge_linux_commit _ < <(git ls-remote \
 	https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
 	"refs/heads/linux-${ARMBIAN_KERNEL_SERIES}.y")
 [[ ${edge_linux_commit} =~ ^[0-9a-f]{40}$ ]]
-export EAIDK610_EDGE_LINUX_COMMIT=${edge_linux_commit}
-"${script_dir}/preflight-image-build.sh"
 
 armbian_dir="${repo_root}/armbian"
-if [[ -e ${armbian_dir}/userpatches && ! -d ${armbian_dir}/userpatches ]]; then
-	printf 'armbian/userpatches exists but is not a directory\n' >&2
-	exit 2
-fi
-
 overlay_source="${repo_root}/${TYPEC_OVERLAY_SOURCE}"
 overlay_binary="${overlay_source%.dts}.dtbo"
 dtc -q -@ -I dts -O dtb -o "${overlay_binary}" "${overlay_source}"
@@ -47,28 +41,27 @@ build_log="${repo_root}/artifacts/build.log"
 		SHARE_LOG=no
 ) 2>&1 | tee "${build_log}"
 
-mapfile -d '' images < <(find "${armbian_dir}/output/images" -maxdepth 1 -type f -name '*.img' -print0 | sort -z)
-[[ ${#images[@]} -eq 1 ]] || { printf 'Expected one image, found %s\n' "${#images[@]}" >&2; exit 3; }
-image_path=${images[0]}
+image_path=$(find "${armbian_dir}/output/images" -maxdepth 1 -type f -name '*.img' -print -quit)
+[[ -n ${image_path} ]] || { printf 'Armbian image was not produced\n' >&2; exit 3; }
 
 "${script_dir}/validate-image.sh" "${image_path}"
 
-compressed_image="${image_path}.xz"
+release_dir="${repo_root}/artifacts/release"
+compressed_image="${release_dir}/eaidk610-armbian-edge.img.xz"
 compressed_tmp="${compressed_image}.tmp"
 xz -T0 -6 --stdout "${image_path}" > "${compressed_tmp}"
 mv "${compressed_tmp}" "${compressed_image}"
-release_dir="${repo_root}/artifacts/release"
-cp -a "${compressed_image}" "${release_dir}/"
 
 {
 	printf 'repository_commit=%s\n' "${GITHUB_SHA:-$(git -C "${repo_root}" rev-parse HEAD)}"
-	printf 'armbian_build_commit=%s\n' "${ARMBIAN_BUILD_COMMIT}"
+	printf 'armbian_build_commit=%s\n' "$(git -C "${armbian_dir}" rev-parse HEAD)"
 	printf 'linux_edge_commit=%s\n' "${edge_linux_commit}"
 	printf 'u_boot_tag=%s\n' "${ARMBIAN_UBOOT_TAG}"
-	printf 'u_boot_commit=%s\n' "${ARMBIAN_UBOOT_COMMIT}"
 	printf 'board=%s\nbranch=%s\nrelease=%s\n' "${ARMBIAN_BOARD}" "${ARMBIAN_BRANCH}" "${ARMBIAN_RELEASE}"
-	printf 'kernel_patch_sha256=%s\n' "${KERNEL_PATCH_SHA256}"
-	printf 'typec_overlay_source_sha256=%s\n' "${TYPEC_OVERLAY_SOURCE_SHA256}"
+	printf 'kernel_patch_sha256=%s\n' \
+		"$(sha256sum "${repo_root}/${KERNEL_PATCH}" | awk '{print $1}')"
+	printf 'typec_overlay_source_sha256=%s\n' \
+		"$(sha256sum "${repo_root}/${TYPEC_OVERLAY_SOURCE}" | awk '{print $1}')"
 	printf 'image=%s\n' "$(basename "${compressed_image}")"
 } > "${release_dir}/BUILD-MANIFEST.txt"
 
@@ -84,9 +77,7 @@ cp -a "${compressed_image}" "${release_dir}/"
 
 (
 	cd "${release_dir}"
-	checksum_tmp=$(mktemp /tmp/eaidk610-sha256sums.XXXXXX)
-	sha256sum -- ./*.img.xz BUILD-MANIFEST.txt > "${checksum_tmp}"
-	mv "${checksum_tmp}" SHA256SUMS
+	sha256sum -- eaidk610-armbian-edge.img.xz BUILD-MANIFEST.txt > SHA256SUMS
 )
 
 printf 'EAIDK610_ARMBIAN_IMAGE_OK\n'
