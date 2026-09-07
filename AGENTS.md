@@ -5,9 +5,13 @@
 - Do not assume the development workspace is the EAIDK610. Use the test target
   supplied by the user; keep connection details in ignored local notes.
 - Board deployment, `/boot` changes, or reboot require user authorization.
-- Use the pinned `armbian/` submodule and Armbian's standard `userpatches/`
-  interface. Do not modify the submodule or maintain a parallel raw-Kbuild
-  release path.
+- This repository contains the Armbian build framework with native EAIDK610
+  support. Keep the board in `config/boards/eaidk610.csc`, kernel fixes in
+  `patch/kernel/archive/rockchip64-7.2/`, and board assets under
+  `config/optional/boards/eaidk610/_packages/bsp-cli/`.
+- Do not reintroduce a framework submodule, a required userpatches overlay,
+  or a parallel raw-Kbuild release path. Use the framework's native BSP and
+  image hooks rather than a standalone board package/customize-image script.
 - The active deliverables are the complete Armbian image and the kernel/board
   DEBs produced by that same build. Historical kernel-only releases are
   records, not a second build pipeline.
@@ -24,10 +28,22 @@
   checks that duplicate the actual build.
 - Retain final image checks for U-Boot, partition boundary, kernel/modules,
   board DTB, enabled overlay, and the merged Type-C/audio properties.
+- Release helpers live in `tools/eaidk610/`; board support must also work with
+  a direct root-level `./compile.sh build BOARD=eaidk610` invocation.
+- BSP assets must participate in Armbian's package cache hashing so overlay
+  changes cannot reuse a stale BSP artifact.
+- The former `eaidk610-board-overlays` package owns files now supplied by the
+  BSP. Remove that old package before an authorized in-place BSP installation;
+  do not force file overwrites or silently migrate a host's boot configuration.
 - Do not push, start GitHub Actions, create a release, or deploy to the board
   unless the user explicitly requests that external action.
 - Avoid rebuilding after a successful kernel compile solely for a nonessential
   wrapper or reporting issue.
+- Use Armbian's native `SRC_EXTLINUX` flow with one boot entry and no recovery
+  entry. Keep boot arguments in the board definition and let Armbian generate
+  the root UUID; the board image hook only adds the board overlay directive.
+- Keep kernel logs visible on serial and display. Do not redirect systemd logs
+  to the kernel buffer or change its rate limits.
 
 ## Device tree
 
@@ -38,13 +54,17 @@
 - Speaker enable belongs to `simple-audio-amplifier` as active-high GPIO0_B3.
 - RT5651 audio routes must use the case-sensitive DAPM name `micbias1`.
 - Do not invent a codec interrupt in the DT; jack detection uses simple-card GPIO.
+- Keep the eMMC node unchanged from the base DTB while validating SD UHS;
+  do not bundle eMMC timing or supply changes into SD tests.
 - Do not claim USB3 orientation, headphone detection, or speaker playback as
   hardware-verified until they are tested on the board.
 
 ## Release files
 
 - Publish the complete image as `eaidk610-armbian-edge.img.xz`; publish its
-  image, DTB, headers, libc-dev, and board DEBs with short stable names.
+  image, DTB, headers, libc-dev, and native BSP DEBs with short stable names.
+- The BSP release filename is `armbian-bsp-eaidk610-edge.deb`; its Debian
+  package name remains `armbian-bsp-cli-eaidk610-edge`.
 - Do not expose Armbian's internal artifact fingerprint in user-facing
   filenames.
 - Keep detailed version and source provenance in `BUILD-MANIFEST.txt`.

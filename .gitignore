@@ -1,12 +1,31 @@
 /artifacts/
 /.cache/
+/.tmp/
+/output/
+/cache/
+/userpatches/
+/config-*.conf
+!/config-docker.conf
+!/config-vagrant.conf
+/.vagrant/
+/.ignore_changes
+Dockerfile
+.dockerignore
+.DS_Store
+*~
+*.swp
+*.orig
+**/__pycache__/
 # Private investigation notes, deployment records, plans, and scratch files.
 /local/
 /references/**/*.pdf
 /tools/rkdeveloptool/
-/userpatches/overlay/boot/overlay-user/*.dtbo
 *.log
 *.deb
 *.img
 *.img.xz
 *.tar.zst
+# Shipped framework templates and firmware are source inputs, not build output.
+!config/templates/example.deb
+!tools/repository/example.deb
+!packages/**/*.img

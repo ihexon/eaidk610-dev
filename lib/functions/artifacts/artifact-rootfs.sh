@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+#
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (c) 2013-2026 Igor Pecovnik, igor@armbian.com
+#
+# This file is a part of the Armbian Build Framework
+# https://github.com/armbian/build/
+
+function artifact_rootfs_config_dump() {
+	artifact_input_variables[ARCH]="${ARCH}"
+	artifact_input_variables[RELEASE]="${RELEASE}"
+	artifact_input_variables[SELECTED_CONFIGURATION]="${SELECTED_CONFIGURATION}" # should be represented below anyway
+	artifact_input_variables[BUILD_MINIMAL]="${BUILD_MINIMAL}"
+	artifact_input_variables[DESKTOP_ENVIRONMENT]="${DESKTOP_ENVIRONMENT:-"no_DESKTOP_ENVIRONMENT_set"}"
+	artifact_input_variables[DESKTOP_TIER]="${DESKTOP_TIER:-"no_DESKTOP_TIER_set"}"
+
+	# Track the latest commit touching configng's desktop definitions.
+	# Any change to YAML, parser, or module code in tools/modules/desktops/
+	# invalidates the desktop rootfs cache — the package list, browser
+	# mapping, tier overrides, or branding may have changed. Scoped to
+	# desktop builds and the desktop subtree because armbian-config is
+	# only invoked at build time for desktop installs
+	# (`module_desktops install mode=build`); for CLI builds the .deb
+	# is just installed and its contents don't affect the rootfs.
+	if [[ "${BUILD_DESKTOP}" == "yes" ]]; then
+		declare configng_desktops_hash="undetermined"
+		local configng_dir="${SRC}/cache/sources/armbian-configng"
+		if [[ -d "${configng_dir}/.git" ]]; then
+			# Best-effort knob for cache-invalidation, not a build blocker - if
+			# git can't read this clone (torn checkout, stale files, broken HEAD,
+			# permissions) we warn and fall through to "unknown" rather than
+			# aborting an hour-long build. create-cache.sh skips the fingerprint
+			# fold on "unknown" / "undetermined", so the image still builds, it
+			# just doesn't get the configng-aware cache bust.
+			#
+			# Two subtleties, both load-bearing under compile.sh's `set -e`:
+			#   (1) `if cmd; then` — NOT a bare `var=$(cmd)`, which under errexit
+			#       aborts the build on git failure before the fallback runs.
+			#   (2) stderr to a file, never merged into the SHA — `git log` can
+			#       exit 0 yet still print hint:/advice:/fsmonitor lines that would
+			#       pollute the cache key (create-cache.sh folds in the first 8
+			#       chars). The warn surfaces git's message from the file.
+			declare git_out git_rc git_err
+			git_err="$(mktemp 2> /dev/null)" || git_err=/dev/null
+			if git_out="$(git -C "${configng_dir}" log -1 --format=%H -- tools/modules/desktops/ 2> "${git_err}")"; then
+				configng_desktops_hash="${git_out}"
+			else
+				git_rc=$?
+				display_alert "configng_desktops hash: git log failed (rc=${git_rc}) in ${configng_dir}" "$(< "${git_err}" 2> /dev/null)" "warn"
+				configng_desktops_hash="unknown"
+			fi
+			[[ "${git_err}" != /dev/null ]] && rm -f "${git_err}"
+		fi
+		artifact_input_variables[CONFIGNG_DESKTOPS_HASH]="${configng_desktops_hash}"
+	fi
+
+	# Hash of the packages added/removed by extensions
+	declare pkgs_hash="undetermined"
+	pkgs_hash="$(echo "${REMOVE_PACKAGES[*]} ${EXTRA_PACKAGES_ROOTFS[*]} ${PACKAGE_LIST_BOARD_REMOVE} ${PACKAGE_LIST_FAMILY_REMOVE}" | sha256sum | cut -d' ' -f1)"
+	artifact_input_variables[EXTRA_PKG_ADD_REMOVE_HASH]="${pkgs_hash}"
+}
+
+function artifact_rootfs_prepare_version() {
+	artifact_version="undetermined"        # outer scope
+	artifact_version_reason="undetermined" # outer scope
+
+	assert_requires_aggregation # Bombs if aggregation has not run
+
+	declare -g rootfs_cache_id="none_yet"
+
+	calculate_rootfs_cache_id # sets rootfs_cache_id
+
+	display_alert "rootfs version" "packages_hash: '${packages_hash:-}' cache_type: '${cache_type:-}' rootfs_cache_id: '${rootfs_cache_id}'" "info"
+
+	declare -a reasons=(
+		"arch \"${ARCH}\""
+		"release \"${RELEASE}\""
+		"type \"${cache_type}\""
+		"cache_id \"${rootfs_cache_id}\""
+	)
+
+	# add more reasons for desktop stuff
+	if [[ "${DESKTOP_ENVIRONMENT}" != "" ]]; then
+		reasons+=("desktop_environment \"${DESKTOP_ENVIRONMENT}\"")
+		reasons+=("desktop_tier \"${DESKTOP_TIER}\"")
+		reasons+=("configng_desktops \"${artifact_input_variables[CONFIGNG_DESKTOPS_HASH]:-none}\"")
+	fi
+
+	# we use YYYYMM to make a new rootfs cache version per-month, even if nothing else changes.
+	declare yyyymm="undetermined"
+	yyyymm="$(date +%Y%m)"
+
+	# outer scope
+	artifact_version="${yyyymm}-${rootfs_cache_id}"
+	artifact_version_reason="${reasons[*]}"
+	artifact_name="rootfs-${ARCH}-${RELEASE}-${cache_type}"
+	artifact_type="tar.zst"
+	artifact_base_dir="${SRC}/cache/rootfs"
+	artifact_final_file="${SRC}/cache/rootfs/${artifact_name}_${artifact_version}.tar.zst"
+
+	return 0
+}
+
+function artifact_rootfs_build_from_sources() {
+	debug_var artifact_final_file
+	debug_var artifact_final_file_basename
+
+	# Creates a cleanup handler 'trap_handler_cleanup_rootfs_and_image'
+	LOG_SECTION="prepare_rootfs_build_params_and_trap" do_with_logging prepare_rootfs_build_params_and_trap
+
+	debug_var artifact_final_file
+	debug_var artifact_final_file_basename
+
+	# validate that tmpfs_estimated_size is set and higher than zero, or exit_with_error
+	[[ -z ${tmpfs_estimated_size} ]] && exit_with_error "tmpfs_estimated_size is not set"
+	[[ ${tmpfs_estimated_size} -le 0 ]] && exit_with_error "tmpfs_estimated_size is not higher than zero"
+
+	# "rootfs" CLI skips over a lot goes straight to create the rootfs. It doesn't check cache etc.
+	LOG_SECTION="create_new_rootfs_cache" do_with_logging create_new_rootfs_cache
+
+	debug_var artifact_final_file
+	debug_var artifact_final_file_basename
+	debug_var cache_name
+	debug_var cache_fname
+
+	if [[ ! -f "${artifact_final_file}" ]]; then
+		exit_with_error "Rootfs cache file '${artifact_final_file}' does not exist after create_new_rootfs_cache()."
+	else
+		display_alert "Rootfs cache file '${artifact_final_file}' exists after create_new_rootfs_cache()." "YESSS" "debug"
+	fi
+
+	# obtain the size, in MiB, of "${SDCARD}" at this point.
+	declare -i rootfs_size_mib
+	rootfs_size_mib=$(du -sm "${SDCARD}" | awk '{print $1}')
+	display_alert "Actual rootfs size" "${rootfs_size_mib}MiB after basic/cache" ""
+
+	# warn if rootfs_size_mib is higher than the tmpfs_estimated_size
+	if [[ ${rootfs_size_mib} -gt ${tmpfs_estimated_size} ]]; then
+		display_alert "Rootfs actual size is larger than estimated tmpfs size after basic/cache" "${rootfs_size_mib}MiB > ${tmpfs_estimated_size}MiB" "wrn"
+	fi
+
+	# Run the cleanup handler.
+	execute_and_remove_cleanup_handler trap_handler_cleanup_rootfs_and_image
+
+	return 0
+}
+
+function artifact_rootfs_cli_adapter_pre_run() {
+	declare -g ARMBIAN_COMMAND_REQUIRE_BASIC_DEPS="yes" # Require prepare_host_basic to run before the command.
+
+	# "gimme root on a Linux machine"
+	cli_standard_relaunch_docker_or_sudo
+}
+
+function artifact_rootfs_cli_adapter_config_prep() {
+	declare -g artifact_version_requires_aggregation="yes"
+	declare -g ROOTFS_COMPRESSION_RATIO="${ROOTFS_COMPRESSION_RATIO:-"15"}" # default to Compress stronger when we make rootfs cache
+
+	# If BOARD is set, use it to convert to an ARCH.
+	if [[ -n ${BOARD} ]]; then
+		display_alert "BOARD is set, converting to ARCH for rootfs building" "'BOARD=${BOARD}'" "info"
+		# Convert BOARD to ARCH; source the BOARD and FAMILY stuff
+		LOG_SECTION="config_source_board_file" do_with_conditional_logging config_source_board_file
+		LOG_SECTION="source_family_config_and_arch" do_with_conditional_logging source_family_config_and_arch
+		display_alert "Done sourcing board file" "'${BOARD}' - arch: '${ARCH}'" "info"
+	fi
+
+	declare -a vars_need_to_be_set=("RELEASE" "ARCH")
+	# loop through all vars and check if they are not set and bomb out if so
+	for var in "${vars_need_to_be_set[@]}"; do
+		if [[ -z ${!var} ]]; then
+			exit_with_error "Param '${var}' is not set but needs to be set for rootfs CLI."
+		fi
+	done
+
+	declare -r __wanted_rootfs_arch="${ARCH}"
+	declare -g -r RELEASE="${RELEASE}" # make readonly for finding who tries to change it
+	declare -g -r NEEDS_BINFMT="yes"   # make sure binfmts are installed during prepare_host_interactive
+
+	# Don't force SKIP_ARMBIAN_REPO=yes for rootfs artifact builds anymore.
+	# The new desktop install path (module_desktops install mode=build,
+	# invoked from rootfs-create.sh) needs apt.armbian.com's
+	# <release>-utils (armbian-config itself) and <release>-desktop
+	# (firefox, chromium, gnome-branded bits) components to be reachable
+	# while the rootfs is being assembled. Default to "no" (repo ON)
+	# and let boards/userpatches opt out explicitly if they still need
+	# the repo-free rootfs behaviour for whatever reason.
+	declare -g SKIP_ARMBIAN_REPO="${SKIP_ARMBIAN_REPO:-no}"
+	declare -g -r SKIP_ARMBIAN_REPO # make it readonly to ensure sanity if hooks try to change it
+
+	track_general_config_variables "in artifact_rootfs_cli_adapter_config_prep"
+
+	# prep_conf_main_only_rootfs_ni is prep_conf_main_only_rootfs_ni() + mark_aggregation_required_in_default_build_start()
+	prep_conf_main_only_rootfs_ni < /dev/null # no stdin for this, so it bombs if tries to be interactive.
+
+	declare -g -r ARCH="${ARCH}" # make readonly for finding who tries to change it
+	if [[ "${ARCH}" != "${__wanted_rootfs_arch}" ]]; then
+		exit_with_error "Param 'ARCH' is set to '${ARCH}' after config, but different from wanted '${__wanted_rootfs_arch}'"
+	fi
+}
+
+function artifact_rootfs_get_default_oci_target() {
+	artifact_oci_target_base="${GHCR_SOURCE}/armbian/os/"
+}
+
+function artifact_rootfs_is_available_in_local_cache() {
+	is_artifact_available_in_local_cache
+}
+
+function artifact_rootfs_is_available_in_remote_cache() {
+	is_artifact_available_in_remote_cache
+}
+
+function artifact_rootfs_obtain_from_remote_cache() {
+	obtain_artifact_from_remote_cache
+}
+
+function artifact_rootfs_deploy_to_remote_cache() {
+	upload_artifact_to_oci
+}

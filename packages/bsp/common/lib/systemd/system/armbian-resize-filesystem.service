@@ -1,0 +1,16 @@
+# Armbian resize filesystem service
+# Resizes partition and filesystem on first/second boot
+# Runs alongside the rest of the boot; it must not block basic.target
+
+[Unit]
+Description=Armbian filesystem resize
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/armbian/armbian-resize-filesystem start
+TimeoutStartSec=6min
+
+[Install]
+WantedBy=multi-user.target

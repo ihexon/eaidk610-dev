@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+#
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (c) 2013-2026 Igor Pecovnik, igor@armbian.com
+#
+# This file is a part of the Armbian Build Framework
+# https://github.com/armbian/build/
+
+# Write a build-time /etc/resolv.conf into the chroot: the primary resolver
+# (${NAMESERVER}) followed by public fallbacks, so a single flaky or unreachable
+# resolver doesn't break apt with "Temporary failure resolving ...". Order is
+# preserved (primary first), so a working primary is always tried before any
+# fallback; the glibc resolver honours at most MAXNS=3 nameservers, so we cap at
+# three. Build-time only — the shipped image's resolv.conf is finalized later
+# (resolvconf / systemd-resolved), so these public resolvers are never shipped.
+function write_build_resolv_conf() {
+	local target="${1}/etc/resolv.conf"
+	local -a ns=()
+	[[ -n "${NAMESERVER}" ]] && ns=("${NAMESERVER}") # omit an empty primary; never emit a blank "nameserver" line
+	local fb
+	for fb in 1.1.1.1 8.8.8.8 9.9.9.9; do
+		[[ "${fb}" == "${NAMESERVER}" ]] && continue
+		ns+=("${fb}")
+	done
+	ns=("${ns[@]:0:3}") # cap at MAXNS=3; extra nameserver lines are ignored by glibc
+	run_host_command_logged rm -fv "${target@Q}"
+	{
+		for fb in "${ns[@]}"; do echo "nameserver ${fb}"; done
+		echo "options timeout:3 attempts:2" # fail over to the next resolver quickly instead of hanging
+	} > "${target}"
+	display_alert "Wrote build-time resolv.conf" "${ns[*]}" "debug"
+}
+
+# called by artifact-rootfs::artifact_rootfs_prepare_version()
+function calculate_rootfs_cache_id() {
+	# Validate that AGGREGATED_ROOTFS_HASH is set
+	[[ -z "${AGGREGATED_ROOTFS_HASH}" ]] && exit_with_error "AGGREGATED_ROOTFS_HASH is not set at calculate_rootfs_cache_id()"
+
+	# If the vars are already set and not empty, exit_with_error
+	[[ "x${packages_hash}x" != "xx" ]] && exit_with_error "packages_hash is already set"
+	[[ "x${cache_type}x" != "xx" ]] && exit_with_error "cache_type is already set"
+
+	declare -i short_hash_size=6
+
+	# get the hashes of the lib/ bash sources involved...
+	declare hash_files="undetermined"
+	calculate_hash_for_files "${SRC}"/lib/functions/rootfs/create-cache.sh "${SRC}"/lib/functions/rootfs/rootfs-create.sh
+	declare bash_hash="${hash_files}"
+	declare bash_hash_short="${bash_hash:0:${short_hash_size}}"
+
+	# hash hooks that affect the rootfs
+	declare -a extension_hooks_to_hash=("custom_apt_repo")
+	declare -a extension_hooks_hashed=("$(dump_extension_method_sources_functions "${extension_hooks_to_hash[@]}")")
+	declare hash_hooks="undetermined"
+	hash_hooks="$(echo "${extension_hooks_hashed[@]}" LANG=${DEST_LANG} | sha256sum | cut -d' ' -f1)"
+	declare hash_hooks_short="${hash_hooks:0:${short_hash_size}}"
+
+	# AGGREGATED_ROOTFS_HASH is produced by aggregation.py
+	declare -g -r packages_hash="${AGGREGATED_ROOTFS_HASH:0:12}-H${hash_hooks_short}-B${bash_hash_short}"
+
+	declare cache_type="cli"
+	[[ ${BUILD_DESKTOP} == yes ]] && cache_type="xfce-desktop"
+	[[ -n ${DESKTOP_ENVIRONMENT} ]] && cache_type="${DESKTOP_ENVIRONMENT}-desktop"
+	[[ ${BUILD_MINIMAL} == yes ]] && cache_type="minimal"
+
+	# Fold DESKTOP_TIER into the cache name for desktop builds.
+	# tier=minimal, tier=mid and tier=full install different
+	# package sets under the same DE, so they can't share a
+	# cache tarball — otherwise the first tier to build wins and
+	# every subsequent tier of that DE silently reuses its rootfs.
+	if [[ ${BUILD_DESKTOP} == yes && -n ${DESKTOP_TIER} ]]; then
+		cache_type="${cache_type}-${DESKTOP_TIER}"
+	fi
+
+	# Fold a short fingerprint of the resolved armbian-configng
+	# desktop tree into the cache name. The desktop package set is
+	# chosen by configng YAMLs at rootfs-create time
+	# (`armbian-config --api module_desktops install mode=build`),
+	# not by the aggregation layer — so packages_hash and
+	# AGGREGATED_ROOTFS_HASH are blind to configng entirely. Without
+	# this, a configng commit that changes which packages a DE
+	# installs leaves the existing rootfs tarball untouched in the
+	# cache and every subsequent build cache-hits the pre-change
+	# version. Scoped to desktop builds: CLI images don't invoke
+	# armbian-config at build time, so configng content doesn't
+	# affect their rootfs.
+	#
+	# CONFIGNG_DESKTOPS_HASH is set by artifact_rootfs_config_dump
+	# above from `git log -1 -- tools/modules/desktops/` in the
+	# cache/sources/armbian-configng clone. 8-char prefix keeps
+	# the filename readable while still giving us ~2^32 of
+	# collision resistance — same truncation style the rest of
+	# this file uses for the hash_hooks/bash_hash components.
+	if [[ ${BUILD_DESKTOP} == yes ]]; then
+		declare _configng_fp="${artifact_input_variables[CONFIGNG_DESKTOPS_HASH]:-}"
+		if [[ -n "${_configng_fp}" &&
+			"${_configng_fp}" != "undetermined" &&
+			"${_configng_fp}" != "unknown" ]]; then
+			cache_type="${cache_type}-${_configng_fp:0:8}"
+		fi
+	fi
+
+	# allow extensions to modify cache_type, since they may have used add_packages_to_rootfs() or remove_packages()
+	cache_type="${cache_type}${EXTRA_ROOTFS_NAME:-""}"
+
+	declare -g -r cache_type="${cache_type}"
+
+	declare -g -r rootfs_cache_id="${packages_hash}"
+
+	display_alert "calculate_rootfs_cache_id: done." "cache_type: '${cache_type}' - rootfs_cache_id: '${rootfs_cache_id}'" "debug"
+}
+
+# called by artifact-rootfs::artifact_rootfs_build_from_sources()
+function create_new_rootfs_cache() {
+	: "${artifact_final_file:?artifact_final_file is not set}"
+	: "${artifact_final_file_basename:?artifact_final_file_basename is not set}"
+
+	[[ ! -d "${SDCARD:?}" ]] && exit_with_error "create_new_rootfs_cache: ${SDCARD} is not a directory"
+	# validate cache_type is set
+	[[ -n "${cache_type}" ]] || exit_with_error "create_new_rootfs_cache: cache_type is not set"
+	# validate packages_hash is set
+	[[ -n "${packages_hash}" ]] || exit_with_error "create_new_rootfs_cache: packages_hash is not set"
+
+	# compatibility with legacy code...
+	declare -g cache_name="${artifact_final_file_basename}"
+	declare -g cache_fname=${artifact_final_file}
+
+	display_alert "Creating new rootfs cache" "'${cache_name}'" "info"
+
+	create_new_rootfs_cache_via_debootstrap # in rootfs-create.sh; deploys & undeploys the qemu binary
+	create_new_rootfs_cache_tarball         # in rootfs-create.sh; no qemu binary available here
+
+	return 0 # protect against possible future short-circuiting above this
+}
+
+# this builds/gets cached rootfs artifact, extracts it to "${SDCARD}"
+function get_or_create_rootfs_cache_chroot_sdcard() {
+	if [[ "${ROOT_FS_CREATE_ONLY}" == yes ]]; then
+		exit_with_error "Using deprecated ROOT_FS_CREATE_ONLY=yes, that is not longer supported. use 'rootfs' CLI command."
+	fi
+
+	# build the rootfs artifact; capture the filename...
+	declare -g artifact_final_file artifact_version artifact_final_file artifact_file_relative
+	WHAT="rootfs" build_artifact_for_image # has its own logging sections, for now
+	declare -g cache_fname="${artifact_final_file}"
+
+	# Setup the cleanup handler, possibly "again", since the artifact already set it up and consumed it, if cache missed.
+	LOG_SECTION="prepare_rootfs_build_params_and_trap" do_with_logging prepare_rootfs_build_params_and_trap
+
+	LOG_SECTION="extract_rootfs_artifact" do_with_logging extract_rootfs_artifact
+	return 0
+}
+
+function extract_rootfs_artifact() {
+	: "${artifact_file_relative:?artifact_file_relative is not set}"
+	: "${artifact_final_file:?artifact_final_file is not set}"
+	# compatibility with legacy code...
+	declare cache_name="${artifact_file_relative}"
+	declare cache_fname=${artifact_final_file}
+
+	if [[ ! -f "${cache_fname}" ]]; then
+		exit_with_error "get_or_create_rootfs_cache_chroot_sdcard: extract: ${cache_fname} is not a file"
+	fi
+
+	# validate sanity
+	[[ "x${SDCARD}x" == "xx" ]] && exit_with_error "get_or_create_rootfs_cache_chroot_sdcard: extract: SDCARD: ${SDCARD} is not set"
+	[[ ! -d "${SDCARD}" ]] && exit_with_error "get_or_create_rootfs_cache_chroot_sdcard: ${SDCARD} is not a directory"
+
+	# @TODO: validate SDCARD is empty; if not, the artifact build "leaked" a cleanup
+
+	local date_diff=$((($(date +%s) - $(stat -c %Y "${cache_fname}")) / 86400))
+	display_alert "Extracting ${artifact_version}" "${date_diff} days old" "info"
+	pv -p -b -r -c -N "$(logging_echo_prefix_for_pv "extract_rootfs") ${artifact_version}" "${cache_fname}" | zstdmt -dc | tar xp --xattrs -C "${SDCARD}"/
+
+	declare -a pv_tar_zstdmt_pipe_status=("${PIPESTATUS[@]}") # capture and the pipe_status array from PIPESTATUS
+	declare one_pipe_status
+	for one_pipe_status in "${pv_tar_zstdmt_pipe_status[@]}"; do
+		if [[ "$one_pipe_status" != "0" ]]; then
+			exit_with_error "get_or_create_rootfs_cache_chroot_sdcard: extract: ${cache_fname} failed (${pv_tar_zstdmt_pipe_status[*]}) - corrupt cache?"
+		fi
+	done
+
+	wait_for_disk_sync "after restoring rootfs cache"
+
+	write_build_resolv_conf "${SDCARD}"
+
+	# all sources etc.
+	# armbian repo is NOT yet included here, since we'll be building the image, and don't want the repo interferring.
+	create_sources_list_and_deploy_repo_key "image-early" "${RELEASE}" "${SDCARD}/"
+
+	return 0
+}
+
+# This comment strategically introduced to force a rebuild of all rootfs, as this file's contents are hashed into all rootfs versions.
+# Just a number to force rebuild 007

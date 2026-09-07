@@ -1,1 +1,4 @@
-userpatches/**/*.patch whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab
+.gitattributes text eol=lf
+config/boards/pocketbeagle2.conf text eol=lf
+packages/bsp/pocketbeagle2-usb-gadget/* text eol=lf
+patch/**/*.patch whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab

@@ -22,10 +22,9 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Check out project and pinned Armbian framework
+      - name: Check out Armbian with EAIDK610 support
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          submodules: recursive
           fetch-depth: 1
 
       - name: Reject an invalid or existing release tag
@@ -54,16 +53,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           shellcheck -S warning \
-            scripts/preflight-image-build.sh \
-            scripts/build-board-overlay-package.sh \
-            scripts/build-image.sh \
-            scripts/validate-image.sh \
-            userpatches/customize-image.sh \
-            packaging/eaidk610-board-overlays/DEBIAN/postinst
+            tools/eaidk610/preflight-image-build.sh \
+            tools/eaidk610/build-image.sh \
+            tools/eaidk610/validate-image.sh
+          shellcheck -S warning -s bash config/boards/eaidk610.csc
 
       - name: Build and validate complete image
         shell: bash
-        run: scripts/build-image.sh
+        run: tools/eaidk610/build-image.sh
 
       - name: Upload failure diagnostics
         if: failure()
@@ -72,8 +69,8 @@ jobs:
           name: eaidk610-image-failure-${{ github.run_id }}
           path: |
             artifacts/build.log
-            armbian/output/logs/
-            armbian/output/info/
+            output/logs/
+            output/info/
           if-no-files-found: warn
           retention-days: 1
 
@@ -94,6 +91,6 @@ jobs:
             artifacts/release/linux-dtb-eaidk610-edge.deb \
             artifacts/release/linux-headers-eaidk610-edge.deb \
             artifacts/release/linux-libc-dev-eaidk610-edge.deb \
-            artifacts/release/eaidk610-board-overlays.deb \
+            artifacts/release/armbian-bsp-eaidk610-edge.deb \
             artifacts/release/SHA256SUMS \
             artifacts/release/BUILD-MANIFEST.txt
