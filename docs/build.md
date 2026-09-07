@@ -60,6 +60,11 @@ limits remain unchanged. Status prompts use the primary serial console and are
 not mirrored. The earliest boot output requires serial until the display console
 is initialized.
 
+Console autologin is disabled (`CONSOLE_AUTOLOGIN=no`) on both serial and
+display consoles. Armbian's first-login setup remains enabled and starts after
+an interactive root login. This build-time default does not modify existing
+installations or previously released images.
+
 Installing the BSP DEB alone does not migrate an existing system to extlinux
 or rewrite its extlinux entries. Existing entries must reference the overlay:
 
