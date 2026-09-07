@@ -14,8 +14,8 @@ Target: OPEN AI LAB EAIDK-610, Rockchip RK3399, 4 GiB RAM, eMMC.
 | RT5651 | Headset microphone on IN3P; onboard microphone on differential IN2P/IN2N; both use `micbias1`; skips requesting an unwired codec interrupt |
 | HDMI | Separate VCCA0V9_S3 and VCCA1V8_S3 analog supplies; existing I2S2 HDMI sound card enabled |
 | SARADC | Reference supply connected to analog VCCA1V8_S3, separate from digital VCC1V8_S3 |
-| SD card | GPIO0_A1-controlled 3.0 V card supply; RK808 VCC_SDIO supplies bus I/O; UHS SDR50/SDR104 enabled with the existing 150 MHz limit |
-| eMMC | Base device-tree configuration retained; no eMMC overrides in the board overlay |
+| SD card | GPIO0_A1-controlled 3.0 V card supply; RK808 VCC_SDIO supplies bus I/O; UHS SDR50/SDR104 enabled with a 200 MHz limit |
+| eMMC | HS400 at 1.8 V with internal PHY strobe pull-down; base supply and clock configuration retained; Enhanced Strobe not enabled |
 | Serial console | UART2, 1500000 baud, 8N1, with device-tree `stdout-path` |
 | Image boot logs | Native extlinux; serial and display kernel consoles, loglevel 8, earlycon enabled, systemd startup status shown; default systemd log routing retained |
 | Bluetooth | Board-specific alias to the BCM4345C0 firmware supplied by `armbian-firmware` |
@@ -37,6 +37,8 @@ board fixes from standalone package 1.0.3.
 | Audio | Linux 7.2.3 with board package 1.0.1: card registration and a 48 kHz stereo silent PCM playback test |
 | Bluetooth | Board package 1.0.1: firmware patch build 0230 loads successfully |
 | Storage baseline | Linux 7.2.3 with board package 1.0.1: eMMC operates at HS200, 200 MHz, 8-bit, 1.8 V; SD operates at 50 MHz High Speed |
+| eMMC HS400 | Linux 7.2.3, AJTD4R eMMC: reboot from eMMC at 200 MHz, 8-bit, 1.8 V with CQE enabled; 512 MiB direct-I/O write/CRC32C readback passed, followed by a 12-second sequential read test; approximately 327 MiB/s read and 54 MiB/s write, with all MMC error counters zero |
+| SD UHS | Linux 7.2.3, SN128 SD card: SDR104 at 200 MHz, 4-bit, 1.8 V; 512 MiB direct-I/O write/CRC32C readback passed, followed by a 12-second sequential read test; approximately 86 MiB/s read and 71 MiB/s write, with all MMC error counters zero |
 | Board package 1.0.3 | Microphone routing, HDMI/ADC supply topology, HDMI audio enablement, and SD descriptions checked against the schematic; eMMC node unchanged from the base DTB; hardware qualification pending |
 
 Audio registration and silent PCM playback do not establish audible output,
@@ -49,7 +51,10 @@ not a measured continuous-load rating.
 
 HDMI supply descriptions do not establish the cause of intermittent display
 failures. HDMI output/audio, microphone capture, SD power cycling, and suspend/
-resume with board package 1.0.3 are not yet hardware-qualified. SD UHS
-throughput and sustained read/write reliability are unqualified. Advertised
+resume with board package 1.0.3 are not yet hardware-qualified. Advertised
 capability does not guarantee stable operation at the highest speed. External
 panel configurations are not enabled by this overlay.
+
+Storage measurements cover one eMMC device and one SD card with short I/O
+tests. HS400 boot coverage is limited to a software reboot. Cold power-on,
+sustained workloads, suspend/resume and other storage variants remain unqualified.

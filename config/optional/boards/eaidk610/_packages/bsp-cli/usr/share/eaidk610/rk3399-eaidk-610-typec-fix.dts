@@ -239,7 +239,7 @@
 		__overlay__ {
 			vmmc-supply = <&eaidk_vcc3v0_sd>;
 			vqmmc-supply = <&vcc_sdio>;
-			/* Retain the board's 150 MHz limit for SDR104. */
+			max-frequency = <200000000>;
 			sd-uhs-sdr50;
 			sd-uhs-sdr104;
 		};
@@ -248,5 +248,19 @@
 	fragment@16 {
 		target = <&hdmi_sound>;
 		__overlay__ { status = "okay"; };
+	};
+	/* Keep the working eMMC power configuration and 200 MHz clock. */
+	fragment@17 {
+		target = <&sdhci>;
+		__overlay__ {
+			mmc-hs400-1_8v;
+		};
+	};
+	/* EMMC_STRB has no external pull-down on the board. */
+	fragment@18 {
+		target = <&emmc_phy>;
+		__overlay__ {
+			rockchip,enable-strobe-pulldown;
+		};
 	};
 };
