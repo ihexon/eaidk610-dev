@@ -8,6 +8,7 @@ Target: OPEN AI LAB EAIDK-610, Rockchip RK3399, 4 GiB RAM, eMMC.
 | --- | --- |
 | FUSB302 | Detects unattached Source connections through fixed-source toggling; ignores received Hard Reset status while PD reception is disabled |
 | Type-C | Automatic dual role with Sink preference; fixed-5-V PD only: Source 1.8 A, Sink 100 mA interface budget; non-PD CC advertisement 1.5 A; DisplayPort disabled |
+| Type-C userspace control | `eaidk610-typec`, supplied by the native BSP; connection status, automatic dual-role policy, role preference, and separate data/power role requests |
 | USB3 Type-C PHY | `tcphy0` receives role and orientation through the Type-C extcon bridge |
 | Headphone detection | simple-audio-card, GPIO4_D4, active high |
 | Speaker amplifier | simple-audio-amplifier, GPIO0_B3, active high, powered by VCC5V0_SYS |
@@ -51,17 +52,33 @@ limit and is not load-qualified; component tolerances may cause current limiting
 before the advertised current is reached. Changing the PDO does not raise the
 hardware current limit.
 
+## Type-C userspace control
+
+`eaidk610-typec` controls `/sys/class/typec/port0` through the standard Linux
+Type-C ABI. Its commands are `status`, `auto`, `prefer`, `port`, `data`, and
+`power`; the complete interface is described by `eaidk610-typec --help`.
+Status is readable without root. Changes require root and affect runtime state
+only; reboot restores the device-tree defaults. `auto` restores dual-role
+policy with Sink preference, without forcing an existing PD connection to swap.
+
+Data and power roles are independent. Requests can fail when the partner cannot
+cooperate or the port is busy, and changing port type may interrupt USB traffic.
+The tool does not configure gadget functions, alter PD voltage/current limits,
+or add a background service. Native BSP asset hashing covers the tool together
+with the overlay, and both are included in the standard image build.
+
 ## Validation coverage
 
 | Area | Verified scope |
 | --- | --- |
 | Image | Automated bootloader, partition, kernel/modules, DTB, and overlay validation |
 | Boot | U-Boot and Linux boot from eMMC; Ethernet and serial console available |
-| Native BSP/extlinux image | Native board hooks pass local preflight; complete image build and board boot validation pending |
+| Native BSP/extlinux image | r8 complete image build and automated image validation passed; native BSP DEBs installed and board reboot verified with extlinux. Fresh r8 image flashing not yet tested |
 | Type-C USB2 | Linux 7.1.8: automatic Source/Host and 480 Mbps enumeration with a reverse-connected OnePlus 8T |
 | Type-C role policy | Linux 7.2.4: dual role, Sink preference and PD disablement persist across reboot; PC reconnection selects Sink/Device; Source/Host fallback with an Rd partner observed, Host peripheral enumeration with this policy not yet qualified |
 | USB3 Type-C Device | Linux 7.2.4 with persisted Sink preference: CDC ACM gadget reached configured state at SuperSpeed with a Windows PC in reverse orientation; sustained transfers and the other orientation not yet qualified |
-| Fixed-5-V PD | Linux 7.2.4: reboot and live PDO registration checked with Source 1.5 A / Sink 100 mA; no partner attached during inspection. The 1.8 A Source setting is compile/merge-checked only; contracts, role swaps and loaded output remain unqualified |
+| Fixed-5-V PD | r8 DEBs, Linux 7.2.4: reboot and live PDO registration verified; one attached partner negotiated a 5 V / 100 mA Sink contract, requested a Sink-to-Source power-role swap, then established a 5 V / 1.8 A Source contract; data role remained Device. Sustained output current and broader interoperability remain unqualified |
+| Type-C userspace tool | Argument handling and sysfs fixture tests; read-only status on Linux 7.2.4. Userspace-requested role changes are not yet hardware-qualified |
 | Audio | Linux 7.2.3 with board package 1.0.1: card registration and a 48 kHz stereo silent PCM playback test |
 | Bluetooth | Board package 1.0.1: firmware patch build 0230 loads successfully |
 | Storage baseline | Linux 7.2.3 with board package 1.0.1: eMMC operates at HS200, 200 MHz, 8-bit, 1.8 V; SD operates at 50 MHz High Speed |
@@ -75,9 +92,9 @@ HDMI audio may change ALSA card numbering. Bluetooth
 pairing and data transfer are not covered by the firmware-loading check.
 Type-C coverage does not establish repeated hotplug reliability, Host peripheral
 enumeration with Sink preference, or sustained 1.5 A / 1.8 A delivery. The tested
-Linux 7.2.4 kernel still entered Hard Reset / VBUS cycling on disconnect despite
-PD being disabled; the added received-Hard-Reset guard has not yet been tested
-in a rebuilt kernel. USB gadget
+earlier Linux 7.2.4 build entered Hard Reset / VBUS cycling on disconnect despite
+PD being disabled. The received-Hard-Reset guard is included in the deployed r8
+kernel; repeated-disconnect regression testing is still pending. USB gadget
 functions such as serial, networking, MTP or ADB require separate configuration;
 automatic role selection does not enable them. The 1.5 A CC and 1.8 A PD values
 are advertisements, not measured continuous-load ratings.

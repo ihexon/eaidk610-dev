@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-2.0-or-later
+set -euo pipefail
+
+port=/sys/class/typec/port0
+
+usage() {
+	printf '%s\n' \
+		'Usage: eaidk610-typec [COMMAND]' \
+		'  status                     Show connection, policy and current roles (default)' \
+		'  auto                       Restore dual-role policy with Sink preference' \
+		'  prefer sink|source|none    Set preference for subsequent connections' \
+		'  port dual|sink|source      Set allowed port type; may disconnect USB' \
+		'  data host|device           Request a USB data-role change' \
+		'  power source|sink         Request a PD power-role change' \
+		'  help                       Show this help' \
+		'' \
+		'Changes require root and last until reboot or another policy change.' \
+		'Role requests may fail if the port is busy or the partner cannot cooperate.' \
+		'Auto/preference do not force an already-connected partner to change roles.' \
+		'This tool does not configure USB gadget functions or change PD voltage/current.'
+}
+
+read_attribute() {
+	local value
+	if ! value=$(cat -- "${port}/$1" 2>/dev/null); then
+		printf 'unavailable'
+		return
+	fi
+	# Sysfs marks the active value in brackets, e.g. "host [device]".
+	if [[ ${value} == *\[*\]* ]]; then
+		value=${value#*\[}
+		value=${value%%\]*}
+	fi
+	printf '%s' "${value}"
+}
+
+show_status() {
+	printf 'Port: %s\n' "${port##*/}"
+	printf 'Port type: %s\n' "$(read_attribute port_type)"
+	printf 'Preferred role: %s\n' "$(read_attribute preferred_role)"
+	if [[ -d ${port}-partner ]]; then
+		printf 'Connection: attached\n'
+		printf 'Data role: %s\n' "$(read_attribute data_role)"
+		printf 'Power role: %s\n' "$(read_attribute power_role)"
+		printf 'Power mode: %s\n' "$(read_attribute power_operation_mode)"
+		printf 'Orientation: %s\n' "$(read_attribute orientation)"
+	else
+		# Unattached ports may retain old role/power-mode values in sysfs.
+		printf 'Connection: unattached\nData role: none\nPower role: none\n'
+	fi
+}
+
+require_root() {
+	if (( EUID != 0 )); then
+		printf 'eaidk610-typec: use sudo to change the port policy or roles\n' >&2
+		return 1
+	fi
+}
+
+write_attribute() {
+	local attribute=$1 value=$2
+	if [[ ! -e ${port}/${attribute} ]]; then
+		printf 'eaidk610-typec: %s is not supported by this port\n' "${attribute}" >&2
+		return 1
+	fi
+	if ! printf '%s\n' "${value}" > "${port}/${attribute}"; then
+		printf 'eaidk610-typec: request failed: %s=%s\n' "${attribute}" "${value}" >&2
+		show_status >&2
+		return 1
+	fi
+}
+
+main() {
+	local command=${1:-status} value=${2:-} attribute
+	case ${command} in
+		help|--help|-h)
+			usage
+			return
+			;;
+		status|auto)
+			(( $# <= 1 )) || { usage >&2; return 2; }
+			;;
+		prefer|port|data|power)
+			(( $# == 2 )) || { usage >&2; return 2; }
+			case ${command}:${value} in
+				prefer:sink|prefer:source|prefer:none) attribute=preferred_role ;;
+				port:dual|port:sink|port:source) attribute=port_type ;;
+				data:host|data:device) attribute=data_role ;;
+				power:source|power:sink) attribute=power_role ;;
+				*) usage >&2; return 2 ;;
+			esac
+			;;
+		*) usage >&2; return 2 ;;
+	esac
+	if [[ ! -d ${port} ]]; then
+		printf 'eaidk610-typec: Type-C port not found: %s\n' "${port}" >&2
+		return 1
+	fi
+	if [[ ${command} == status ]]; then
+		show_status
+		return
+	fi
+	require_root || return 1
+	if [[ ${command} == auto ]]; then
+		# Set the preference before changing port type, which can reset the port.
+		write_attribute preferred_role sink || return 1
+		write_attribute port_type dual || return 1
+	else
+		write_attribute "${attribute}" "${value}" || return 1
+	fi
+	printf 'Request accepted; current state:\n'
+	show_status
+}
+
+if [[ ${BASH_SOURCE[0]:-$0} == "$0" ]]; then
+	main "$@"
+fi

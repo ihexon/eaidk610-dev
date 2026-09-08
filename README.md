@@ -17,7 +17,7 @@ complete bootable image and the kernel packages produced by the same build.
 | `linux-dtb-eaidk610-edge.deb` | Device trees |
 | `linux-headers-eaidk610-edge.deb` | Kernel headers |
 | `linux-libc-dev-eaidk610-edge.deb` | Linux userspace API headers |
-| `armbian-bsp-eaidk610-edge.deb` | Native Armbian board support, board overlay, and Bluetooth firmware alias |
+| `armbian-bsp-eaidk610-edge.deb` | Native Armbian board support, board overlay, `eaidk610-typec` tool, and Bluetooth firmware alias |
 | `SHA256SUMS`, `BUILD-MANIFEST.txt` | Download checksums and build provenance |
 
 The full image includes the board package and enables its overlay by default.
@@ -34,6 +34,8 @@ boot configuration automatically.
 - Armbian rockchip64 edge, Linux 7.2 stable series.
 - Upstream U-Boot `v2026.10-rc3`, mainline TPL/SPL, and Rockchip BL31 v1.36.
 - Native extlinux boot with one entry and the board overlay enabled by default.
+- `eaidk610-typec` CLI for runtime role/policy control, included in the native BSP
+  and installed in images by default; no background service required.
 - EAIDK610 fixes for Type-C role switching, USB3 PHY orientation, RT5651 audio,
   HDMI supplies and audio, SD card supplies and UHS modes, serial console
   initialization, and Bluetooth firmware lookup.

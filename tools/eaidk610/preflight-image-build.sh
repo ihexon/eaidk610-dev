@@ -55,6 +55,8 @@ customizer_root="${preflight_tmp}/root"
 mkdir -p "${customizer_root}"
 cp -a "${repo_root}/config/optional/boards/eaidk610/_packages/bsp-cli/." "${customizer_root}/"
 destination=${customizer_root} post_family_tweaks_bsp__eaidk610_overlay
+[[ -x ${customizer_root}/usr/bin/eaidk610-typec ]] || fail 'Type-C userspace tool is missing or not executable'
+"${customizer_root}/usr/bin/eaidk610-typec" --help >/dev/null
 [[ $(readlink "${customizer_root}/usr/lib/firmware/brcm/BCM4345C0.openailab,eaidk-610.hcd") == ../BCM4345C0.hcd ]]
 extlinux="${customizer_root}/boot/extlinux/extlinux.conf"
 install -D -m 0644 /dev/null "${extlinux}"

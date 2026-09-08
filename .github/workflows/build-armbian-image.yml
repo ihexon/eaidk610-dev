@@ -48,15 +48,18 @@ jobs:
           sudo apt-get install --yes \
             binutils device-tree-compiler fdisk jq shellcheck util-linux xz-utils
 
-      - name: Lint build scripts
+      - name: Lint scripts and test Type-C tool
         shell: bash
         run: |
           set -Eeuo pipefail
           shellcheck -S warning \
             tools/eaidk610/preflight-image-build.sh \
             tools/eaidk610/build-image.sh \
-            tools/eaidk610/validate-image.sh
+            tools/eaidk610/validate-image.sh \
+            tools/eaidk610/test-typec-tool.sh \
+            config/optional/boards/eaidk610/_packages/bsp-cli/usr/bin/eaidk610-typec
           shellcheck -S warning -s bash config/boards/eaidk610.csc
+          tools/eaidk610/test-typec-tool.sh
 
       - name: Build and validate complete image
         shell: bash
