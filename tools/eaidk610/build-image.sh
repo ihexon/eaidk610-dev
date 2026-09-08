@@ -95,6 +95,8 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf -- '- Audio: corrected RT5651 routes and no IRQ request for an unwired codec interrupt\n'
 	printf -- '- U-Boot: upstream %s binman image at LBA 64; U-Boot FIT at LBA 16384\n' "${ARMBIAN_UBOOT_TAG}"
 	printf -- '- Device tree: rockchip/rk3399-eaidk-610.dtb\n'
+	printf -- '- Type-C: Sink-preferred dual role; fixed 5V PD only (Source 1.8A, Sink 100mA interface budget); non-PD advertisement remains 1.5A\n'
+	printf -- '- Power qualification: independent 12V board supply required; PD contracts, role swaps, and sustained 1.8A output remain unqualified\n'
 	printf -- '- Kernel packages: image, DTB, headers, and libc development files\n'
 	printf -- '- Board package: armbian-bsp-eaidk610-edge.deb, includes the default board overlay\n'
 	printf -- '- Boot: native extlinux, one entry, serial and display kernel logs\n'

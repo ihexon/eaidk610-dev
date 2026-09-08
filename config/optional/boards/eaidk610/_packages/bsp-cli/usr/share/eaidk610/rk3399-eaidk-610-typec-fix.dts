@@ -1,7 +1,7 @@
 /dts-v1/;
 /plugin/;
 
-/* EAIDK-610 board fixes. Type-C: USB-only, 5V/1.5A, no PD or DP. */
+/* EAIDK-610 board fixes. Type-C: fixed-5V PD, no DisplayPort. */
 / {
 	fragment@0 {
 		target = <&fusb0>;
@@ -14,9 +14,16 @@
 			connector {
 				power-role = "dual";
 				data-role = "dual";
-				try-power-role = "source";
-				pd-disable;
-				typec-power-opmode = "1.5A";
+				/* Prefer the peripheral role when connected to a PC. */
+				try-power-role = "sink";
+				/* Fixed PDO flags: dual role, external power, USB communication,
+				 * data-role swap. No higher voltages: VBUS uses a 5V-only switch.
+				 * Raw PDO cells keep this overlay directly compilable by dtc.
+				 */
+				source-pdos = <0x2e0190b4>; /* 5V, 1.8A; CC advertises 1.5A */
+				sink-pdos = <0x2e01900a>; /* 5V, 100mA interface budget */
+				op-sink-microwatt = <500000>;
+				/* System power comes from the separate 12V input, not VBUS. */
 				self-powered;
 				/* Notify the extcon bridge about the connector orientation. */
 				orientation-switch = <&eaidk_typec_bridge>;

@@ -3,9 +3,13 @@ From: ihexon <zzheasy@gmail.com>
 Date: Sun, 6 Sep 2026 08:03:24 +0800
 Subject: [PATCH] usb: typec: fusb302: detect unattached source connection
 
+Also ignore a latched received Hard Reset while PD reception is disabled.
+Otherwise a CC disconnect interrupt can deliver the masked PD status bit
+to TCPM and replace detach processing with a VBUS hard-reset cycle.
+
 ---
- drivers/usb/typec/tcpm/fusb302.c | 34 +++++++++++++++++++++++++++++---
- 1 file changed, 31 insertions(+), 3 deletions(-)
+ drivers/usb/typec/tcpm/fusb302.c | 41 +++++++++++++++++++++++++++++++++----
+ 1 file changed, 37 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/usb/typec/tcpm/fusb302.c b/drivers/usb/typec/tcpm/fusb302.c
 index 9ab1277b7..74f5164b4 100644
@@ -73,3 +77,17 @@ index 9ab1277b7..74f5164b4 100644
  done:
  	mutex_unlock(&chip->lock);
  
+@@ -1610,7 +1638,12 @@ static void fusb302_irq_work(struct work_struct *work)
+ 		}
+ 	}
+ 
+-	if (interrupta & FUSB_REG_INTERRUPTA_HARDRESET) {
++	/*
++	 * Masked status bits can still latch during a CC interrupt. Do not
++	 * restart the PD state machine when PD reception is disabled.
++	 */
++	if (chip->pd_rx_on &&
++	    (interrupta & FUSB_REG_INTERRUPTA_HARDRESET)) {
+ 		fusb302_log(chip, "IRQ: PD received hardreset");
+ 		ret = fusb302_pd_reset(chip);
+ 		if (ret < 0) {

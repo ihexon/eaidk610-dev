@@ -6,8 +6,8 @@ Target: OPEN AI LAB EAIDK-610, Rockchip RK3399, 4 GiB RAM, eMMC.
 
 | Component | Configuration |
 | --- | --- |
-| FUSB302 | Detects unattached Source connections through fixed-source toggling |
-| Type-C | Dual role, Source preference, 5 V / 1.5 A advertisement; PD and DisplayPort disabled |
+| FUSB302 | Detects unattached Source connections through fixed-source toggling; ignores received Hard Reset status while PD reception is disabled |
+| Type-C | Automatic dual role with Sink preference; fixed-5-V PD only: Source 1.8 A, Sink 100 mA interface budget; non-PD CC advertisement 1.5 A; DisplayPort disabled |
 | USB3 Type-C PHY | `tcphy0` receives role and orientation through the Type-C extcon bridge |
 | Headphone detection | simple-audio-card, GPIO4_D4, active high |
 | Speaker amplifier | simple-audio-amplifier, GPIO0_B3, active high, powered by VCC5V0_SYS |
@@ -25,6 +25,32 @@ The upstream base DTB remains unchanged. Armbian's native EAIDK610 BSP package
 owns the compiled overlay and firmware alias. Overlay contents retain the
 board fixes from standalone package 1.0.3.
 
+## Type-C power limits
+
+The schematic's USB/USIC sheet 14 shows a fixed 5 V output path from
+`VCC5V0_SYS` through U1420 (SY6280AAC) to the Type-C VBUS pins. There is no
+supported Type-C input-power path to the system rails; the board uses a separate
+12 V supply. A reported Sink role does not mean that USB powers the board.
+
+The [SY6280](https://www.silergy.com/download/downloadFile?ftype=note&id=4369&type=product)
+operates at 2.4–5.5 V and has a 6 V absolute maximum. R1466 (3.6 kOhm) sets a
+nominal current limit of approximately 1.89 A, not a guaranteed continuous-load
+rating. The datasheet specifies a 2 A load capability and advises against
+setting the current limit above 2 A. High-voltage PD input/output and 3 A or 5 A
+source advertisements are not supported by this power path.
+
+The [FUSB302 controller family](https://www.onsemi.com/download/data-sheet/pdf/fusb302b-d.pdf)
+provides PD communication. The overlay declares exactly one fixed 5 V PDO in
+each direction: 1.8 A as Source and 100 mA as Sink. The 0.5 W Sink budget covers
+the VBUS interface, not system power or battery charging; it is not a measured
+consumption figure. TCPM also advertises 1.5 A over CC when sourcing without a
+PD contract. No higher-voltage, PPS or EPR PDOs are configured. Data-role and
+power-role swaps are advertised; interoperability remains subject to testing.
+The 1.8 A Source setting has little margin below the nominal hardware current
+limit and is not load-qualified; component tolerances may cause current limiting
+before the advertised current is reached. Changing the PDO does not raise the
+hardware current limit.
+
 ## Validation coverage
 
 | Area | Verified scope |
@@ -33,7 +59,9 @@ board fixes from standalone package 1.0.3.
 | Boot | U-Boot and Linux boot from eMMC; Ethernet and serial console available |
 | Native BSP/extlinux image | Native board hooks pass local preflight; complete image build and board boot validation pending |
 | Type-C USB2 | Linux 7.1.8: automatic Source/Host and 480 Mbps enumeration with a reverse-connected OnePlus 8T |
-| USB3 Type-C | PHY/extcon wiring verified; SuperSpeed transfers in both orientations not yet qualified |
+| Type-C role policy | Linux 7.2.4: dual role, Sink preference and PD disablement persist across reboot; PC reconnection selects Sink/Device; Source/Host fallback with an Rd partner observed, Host peripheral enumeration with this policy not yet qualified |
+| USB3 Type-C Device | Linux 7.2.4 with persisted Sink preference: CDC ACM gadget reached configured state at SuperSpeed with a Windows PC in reverse orientation; sustained transfers and the other orientation not yet qualified |
+| Fixed-5-V PD | Linux 7.2.4: reboot and live PDO registration checked with Source 1.5 A / Sink 100 mA; no partner attached during inspection. The 1.8 A Source setting is compile/merge-checked only; contracts, role swaps and loaded output remain unqualified |
 | Audio | Linux 7.2.3 with board package 1.0.1: card registration and a 48 kHz stereo silent PCM playback test |
 | Bluetooth | Board package 1.0.1: firmware patch build 0230 loads successfully |
 | Storage baseline | Linux 7.2.3 with board package 1.0.1: eMMC operates at HS200, 200 MHz, 8-bit, 1.8 V; SD operates at 50 MHz High Speed |
@@ -45,9 +73,14 @@ Audio registration and silent PCM playback do not establish audible output,
 microphone capture quality, or headphone insertion/removal behavior. Enabling
 HDMI audio may change ALSA card numbering. Bluetooth
 pairing and data transfer are not covered by the firmware-loading check.
-Type-C coverage does not establish repeated hotplug reliability, Sink/Device
-operation, or sustained 1.5 A delivery. The 1.5 A value is a CC advertisement,
-not a measured continuous-load rating.
+Type-C coverage does not establish repeated hotplug reliability, Host peripheral
+enumeration with Sink preference, or sustained 1.5 A / 1.8 A delivery. The tested
+Linux 7.2.4 kernel still entered Hard Reset / VBUS cycling on disconnect despite
+PD being disabled; the added received-Hard-Reset guard has not yet been tested
+in a rebuilt kernel. USB gadget
+functions such as serial, networking, MTP or ADB require separate configuration;
+automatic role selection does not enable them. The 1.5 A CC and 1.8 A PD values
+are advertisements, not measured continuous-load ratings.
 
 HDMI supply descriptions do not establish the cause of intermittent display
 failures. HDMI output/audio, microphone capture, SD power cycling, and suspend/

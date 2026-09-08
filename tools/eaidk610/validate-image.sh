@@ -81,10 +81,17 @@ fdtoverlay -i "${dtb_path}" -o "${merged_dtb}" \
 [[ $(fdtget -t s "${merged_dtb}" /regulator-vcc5v0-typec-managed status) == okay ]] || \
 	fail 'overlay did not enable the managed Type-C regulator'
 connector=/i2c@ff3d0000/typec-portc@22/connector
-[[ $(fdtget -t s "${merged_dtb}" "${connector}" try-power-role) == source ]] || \
-	fail 'overlay did not set the connector Source preference'
-[[ $(fdtget -t s "${merged_dtb}" "${connector}" typec-power-opmode) == 1.5A ]] || \
-	fail 'overlay did not set the connector current advertisement to 1.5A'
+[[ $(fdtget -t s "${merged_dtb}" "${connector}" try-power-role) == sink ]] || \
+	fail 'overlay did not set the connector Sink preference'
+if fdtget "${merged_dtb}" "${connector}" pd-disable >/dev/null 2>&1; then
+	fail 'overlay left USB PD disabled'
+fi
+[[ $(fdtget -t x "${merged_dtb}" "${connector}" source-pdos) == 2e0190b4 ]] || \
+	fail 'expected a single fixed 5V / 1.8A Source PDO'
+[[ $(fdtget -t x "${merged_dtb}" "${connector}" sink-pdos) == 2e01900a ]] || \
+	fail 'expected a single fixed 5V / 100mA Sink PDO'
+[[ $(fdtget -t u "${merged_dtb}" "${connector}" op-sink-microwatt) == 500000 ]] || \
+	fail 'incorrect Type-C interface power budget'
 tcphy0_path=$(fdtget -t s "${merged_dtb}" /__symbols__ tcphy0)
 tcphy0_extcon=$(fdtget -t x "${merged_dtb}" "${tcphy0_path}" extcon)
 bridge_phandle=$(fdtget -t x "${merged_dtb}" /typec-extcon phandle)
