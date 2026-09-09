@@ -92,7 +92,7 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf '# EAIDK610 Armbian Edge image\n\n'
 	printf 'Directly bootable Armbian Trixie Minimal image for OPEN AI LAB EAIDK-610.\n\n'
 	printf -- '- Linux: Armbian edge %s with the EAIDK610 FUSB302 patch\n' "${ARMBIAN_KERNEL_SERIES}"
-	printf -- '- Audio: corrected RT5651 routes and no IRQ request for an unwired codec interrupt\n'
+	printf -- '- Audio: corrected RT5651 routes and MCLK, 40 dB onboard microphone boost, UCM input/output selection, and independent speaker mute; PipeWire/WirePlumber included\n'
 	printf -- '- U-Boot: upstream %s binman image at LBA 64; U-Boot FIT at LBA 16384\n' "${ARMBIAN_UBOOT_TAG}"
 	printf -- '- Device tree: rockchip/rk3399-eaidk-610.dtb\n'
 	printf -- '- Type-C: Sink-preferred dual role; fixed 5V PD only (Source 1.8A, Sink 100mA interface budget); non-PD advertisement remains 1.5A\n'

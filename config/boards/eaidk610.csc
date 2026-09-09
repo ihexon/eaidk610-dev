@@ -26,8 +26,10 @@ CONSOLE_AUTOLOGIN="no"
 FULL_DESKTOP="yes"
 BOOT_LOGO="desktop"
 HAS_VIDEO_OUTPUT="yes"
-PACKAGE_LIST_BOARD="device-tree-compiler"
-EXTRA_BSPDEPS="armbian-firmware"
+PACKAGE_LIST_BOARD="device-tree-compiler alsa-ucm-conf pipewire pipewire-pulse wireplumber rtkit"
+EXTRA_BSPDEPS="armbian-firmware, alsa-ucm-conf"
+# The BSP supplies board-specific defaults, installed by the image hook below.
+ASOUND_STATE=""
 
 # Common architecture defaults are loaded after the board definition.
 function post_family_config__eaidk610_boot_logging() {
@@ -56,4 +58,9 @@ function post_customize_image__eaidk610_extlinux_overlay() {
 	sed -i '/^[[:space:]]*fdtoverlays[[:space:]]/Id' "${extlinux}"
 	printf '  fdtoverlays %soverlay-user/rk3399-eaidk-610-typec-fix.dtbo\n' \
 		"${kernel_path%/*}/" >> "${extlinux}"
+}
+
+function post_customize_image__eaidk610_audio_defaults() {
+	install -D -m 0644 "${SDCARD}/usr/share/eaidk610/asound.state" \
+		"${SDCARD}/var/lib/alsa/asound.state"
 }

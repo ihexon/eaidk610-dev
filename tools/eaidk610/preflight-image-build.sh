@@ -63,6 +63,8 @@ install -D -m 0644 /dev/null "${extlinux}"
 printf 'label Armbian\n  kernel /boot/Image\n  initrd /boot/uInitrd\n  fdt /boot/dtb/%s\n' \
 	"${BOOT_FDT_FILE}" > "${extlinux}"
 SDCARD=${customizer_root} post_customize_image__eaidk610_extlinux_overlay
+SDCARD=${customizer_root} post_customize_image__eaidk610_audio_defaults
+cmp "${customizer_root}/usr/share/eaidk610/asound.state" "${customizer_root}/var/lib/alsa/asound.state"
 grep -Fqx "  fdtoverlays /boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo" "${extlinux}"
 [[ -s ${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo ]]
 # RT5651 DAPM widget names are case-sensitive; MICBIAS1 prevents card registration.

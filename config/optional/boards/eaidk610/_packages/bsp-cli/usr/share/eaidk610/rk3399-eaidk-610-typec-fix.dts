@@ -136,6 +136,8 @@
 			pinctrl-0 = <&rt5651_hpcon>;
 			simple-audio-card,aux-devs = <&eaidk_speaker_amp>;
 			simple-audio-card,hp-det-gpios = <&gpio4 28 0>;
+			/* Userspace can mute the shared-output speaker without muting headphones. */
+			simple-audio-card,pin-switches = "Internal Speaker";
 			simple-audio-card,widgets =
 				"Microphone", "Mic Jack",
 				"Microphone", "Internal Mic",
@@ -160,6 +162,10 @@
 		target = <&pinctrl>;
 		__overlay__ {
 			eaidk-audio {
+				eaidk_i2s_mclk: i2s-mclk {
+					/* GPIO4_A0 -> R5003 -> RT5651 MCLK. */
+					rockchip,pins = <4 0 1 &pcfg_pull_none>;
+				};
 				eaidk_speaker_amp_enable: speaker-amp-enable {
 					rockchip,pins = <0 11 0 &pcfg_pull_down>;
 				};
@@ -268,6 +274,18 @@
 		target = <&emmc_phy>;
 		__overlay__ {
 			rockchip,enable-strobe-pulldown;
+		};
+	};
+	fragment@19 {
+		target = <&i2s1>;
+		__overlay__ {
+			/* Armbian exports SCLK_I2SOUT_SRC=64; SCLK_I2S1_8CH=87.
+			 * Feed the codec MCLK from the same clock as its I2S bus.
+			 */
+			assigned-clocks = <&cru 64>;
+			assigned-clock-parents = <&cru 87>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&eaidk_i2s_mclk &i2s1_2ch_bus>;
 		};
 	};
 };

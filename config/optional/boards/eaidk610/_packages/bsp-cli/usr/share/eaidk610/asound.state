@@ -1,0 +1,42 @@
+# EAIDK610 first-boot defaults. Runtime changes belong in /var/lib/alsa/asound.state.
+# IN2: 40 dB onboard mic boost; IN3: conservative 20 dB headset mic boost.
+# ADC digital gain remains 0 dB; playback uses the DAC1 volume control.
+state.realtekrt5651co {
+	control.1 { iface MIXER name 'IN2 Boost' value 5 }
+	control.2 { iface MIXER name 'IN3 Boost' value 1 }
+	control.3 { iface MIXER name 'IN Capture Volume' value.0 23 value.1 23 }
+	control.4 { iface MIXER name 'ADC Capture Volume' value.0 47 value.1 47 }
+	control.5 { iface MIXER name 'ADC Boost Gain' value.0 0 value.1 0 }
+	control.6 { iface MIXER name 'ADC Capture Switch' value.0 true value.1 true }
+	control.7 { iface MIXER name 'Stereo1 ADC L1 Mux' value ADC }
+	control.8 { iface MIXER name 'Stereo1 ADC R1 Mux' value ADC }
+	control.9 { iface MIXER name 'Stereo1 ADC MIXL ADC1 Switch' value true }
+	control.10 { iface MIXER name 'Stereo1 ADC MIXR ADC1 Switch' value true }
+	control.11 { iface MIXER name 'Stereo1 ADC MIXL ADC2 Switch' value false }
+	control.12 { iface MIXER name 'Stereo1 ADC MIXR ADC2 Switch' value false }
+	control.13 { iface MIXER name 'RECMIXL INL1 Switch' value false }
+	control.14 { iface MIXER name 'RECMIXR INR1 Switch' value false }
+	control.15 { iface MIXER name 'RECMIXL BST1 Switch' value false }
+	control.16 { iface MIXER name 'RECMIXR BST1 Switch' value false }
+	control.17 { iface MIXER name 'RECMIXL BST3 Switch' value false }
+	control.18 { iface MIXER name 'RECMIXR BST3 Switch' value false }
+	control.19 { iface MIXER name 'RECMIXL BST2 Switch' value true }
+	control.20 { iface MIXER name 'RECMIXR BST2 Switch' value true }
+	control.21 { iface MIXER name 'DAC1 Playback Volume' value.0 175 value.1 175 }
+	control.22 { iface MIXER name 'HP Playback Volume' value.0 31 value.1 31 }
+	control.23 { iface MIXER name 'DAC MIXL INF1 Switch' value true }
+	control.24 { iface MIXER name 'DAC MIXR INF1 Switch' value true }
+	control.25 { iface MIXER name 'DAC MIXL Stereo ADC Switch' value false }
+	control.26 { iface MIXER name 'DAC MIXR Stereo ADC Switch' value false }
+	control.27 { iface MIXER name 'Stereo DAC MIXL DAC L1 Switch' value true }
+	control.28 { iface MIXER name 'Stereo DAC MIXR DAC R1 Switch' value true }
+	control.29 { iface MIXER name 'Stereo DAC MIXL DAC R1 Switch' value false }
+	control.30 { iface MIXER name 'Stereo DAC MIXR DAC L1 Switch' value false }
+	control.31 { iface MIXER name 'Stereo DAC MIXL DAC L2 Switch' value false }
+	control.32 { iface MIXER name 'Stereo DAC MIXR DAC R2 Switch' value false }
+	control.33 { iface MIXER name 'HPO MIX DAC1 Switch' value true }
+	control.34 { iface MIXER name 'HPO MIX HPVOL Switch' value false }
+	control.35 { iface MIXER name 'HPO L Playback Switch' value true }
+	control.36 { iface MIXER name 'HPO R Playback Switch' value true }
+	control.37 { iface MIXER name 'Internal Speaker Switch' value true }
+}
