@@ -94,6 +94,25 @@ cannot identify whether the inserted plug has a microphone, so onboard capture
 remains preferred and headset capture is explicitly selectable. Bluetooth AIF2
 audio routing is not enabled.
 
+## Audio driver and scheduling defaults
+
+The kernel patch set declares DW HDMI I2S audio playback-only. An absent
+monitor's all-zero ELD uses the existing stereo fallback during PCM probing;
+nonempty capability data is still parsed and refreshed on hotplug. The
+Rockchip I2S register cache explicitly initializes the transfer-control
+register to its documented stopped state.
+
+EAIDK610 images set `rt_group_sched=0` so RTKit can grant realtime scheduling
+to audio threads under cgroup v2 without zero-bandwidth RT task groups.
+Normal CPU/memory cgroup controls remain enabled; per-group SCHED_FIFO/RR
+bandwidth allocation is disabled. This does not enable PREEMPT_RT or remove
+the global realtime bandwidth limit. Existing installations need an explicit
+boot-argument update; installing a BSP does not rewrite their boot settings.
+
+These driver and scheduling changes are not yet build- or hardware-qualified.
+HDMI hotplug/playback, audio-thread realtime priority and runtime suspend/resume
+require verification with the updated kernel and boot arguments.
+
 ## Validation coverage
 
 | Area | Verified scope |

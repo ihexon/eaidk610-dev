@@ -1,0 +1,24 @@
+From: ihexon <zzheasy@gmail.com>
+Subject: [PATCH] drm/bridge: dw-hdmi: declare I2S audio playback-only
+
+The DW HDMI I2S interface transmits audio to the HDMI sink; it does not
+capture audio. Leaving no_i2s_capture unset exposes a capture PCM on
+simple-card systems such as RK3399 EAIDK610. Opening it alongside playback
+during audio profile probing hits hdmi-codec's single-stream guard.
+
+Declare the actual direction instead of disabling HDMI or suppressing the
+busy error. Analog codec capture is unaffected.
+
+Signed-off-by: ihexon <zzheasy@gmail.com>
+---
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
+@@ -197,6 +197,7 @@ static int snd_dw_hdmi_probe(struct platform_device *pdev)
+ 	memset(&pdata, 0, sizeof(pdata));
+ 	pdata.ops		= &dw_hdmi_i2s_ops;
+ 	pdata.i2s		= 1;
++	pdata.no_i2s_capture	= 1;
+ 	pdata.max_i2s_channels	= 8;
+ 	pdata.data		= audio;
+ 

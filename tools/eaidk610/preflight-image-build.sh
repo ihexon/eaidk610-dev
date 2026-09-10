@@ -82,7 +82,7 @@ fdtget "${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo" \
 eval "$(sed -n '/^declare -g MAIN_CMDLINE=/p' "${repo_root}/config/sources/common.conf")"
 post_family_config__eaidk610_boot_logging
 cmdline="${SRC_CMDLINE} ${MAIN_CMDLINE}"
-for setting in rootwait console=tty1 console=ttyS2,1500000n8 earlycon loglevel=8 systemd.show_status=yes; do
+for setting in rootwait console=tty1 console=ttyS2,1500000n8 earlycon loglevel=8 systemd.show_status=yes rt_group_sched=0; do
 	[[ " ${cmdline} " == *" ${setting} "* ]] || fail "missing ${setting}"
 done
 for setting in quiet splash plymouth.ignore-serial-consoles; do

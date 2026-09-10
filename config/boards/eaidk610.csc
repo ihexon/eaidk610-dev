@@ -10,7 +10,8 @@ INTRODUCED="2018"
 BOOTCONFIG="eaidk-610-rk3399_defconfig"
 BOOT_FDT_FILE="rockchip/rk3399-eaidk-610.dtb"
 SRC_EXTLINUX="yes"
-SRC_CMDLINE="rootwait console=tty1 console=ttyS2,1500000n8 earlycon loglevel=8 systemd.show_status=yes"
+# cgroup v2 has no RT bandwidth allocator; allow RTKit-managed audio threads.
+SRC_CMDLINE="rootwait console=tty1 console=ttyS2,1500000n8 earlycon loglevel=8 systemd.show_status=yes rt_group_sched=0"
 KERNEL_TARGET="edge"
 KERNEL_TEST_TARGET="edge"
 

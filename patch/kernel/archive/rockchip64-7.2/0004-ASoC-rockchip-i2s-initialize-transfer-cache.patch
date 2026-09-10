@@ -1,0 +1,26 @@
+From: ihexon <zzheasy@gmail.com>
+Subject: [PATCH] ASoC: rockchip: i2s: add the XFER register default
+
+I2S_XFER is readable, writable and non-volatile but has no regcache
+default. Runtime resume syncs REGCACHE_FLAT before the first stream has
+written XFER, causing a read of an invalid zero-initialized cache entry.
+The same can occur on the first read-modify-write of the start bits.
+
+The RK3399 TRM V1.4, Part 1, section 22.4 (pages 705 and 714), specifies a
+reset value of zero for I2S_XFER (0x001c): both transmit and receive are
+stopped. Record that value explicitly. Keep the existing cache policy and
+all other register defaults.
+
+Signed-off-by: ihexon <zzheasy@gmail.com>
+---
+diff --git a/sound/soc/rockchip/rockchip_i2s.c b/sound/soc/rockchip/rockchip_i2s.c
+--- a/sound/soc/rockchip/rockchip_i2s.c
++++ b/sound/soc/rockchip/rockchip_i2s.c
+@@ -623,6 +623,7 @@ static const struct reg_default rockchip_i2s_reg_defaults[] = {
+ 	{0x08, 0x00071f1f},
+ 	{0x10, 0x001f0000},
+ 	{0x14, 0x01f00000},
++	{I2S_XFER, 0x00000000},
+ };
+ 
+ static const struct regmap_config rockchip_i2s_regmap_config = {
