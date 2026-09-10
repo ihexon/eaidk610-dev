@@ -288,4 +288,12 @@
 			pinctrl-0 = <&eaidk_i2s_mclk &i2s1_2ch_bus>;
 		};
 	};
+	/* RK3399 TRM: DMAC1 requests 0/1 are UART0 TX/RX (Bluetooth). */
+	fragment@20 {
+		target = <&uart0>;
+		__overlay__ {
+			dmas = <&dmac_peri 0>, <&dmac_peri 1>;
+			dma-names = "tx", "rx";
+		};
+	};
 };

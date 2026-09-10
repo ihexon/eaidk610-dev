@@ -21,7 +21,7 @@ Target: OPEN AI LAB EAIDK-610, Rockchip RK3399, 4 GiB RAM, eMMC.
 | eMMC | HS400 at 1.8 V with internal PHY strobe pull-down; base supply and clock configuration retained; Enhanced Strobe not enabled |
 | Serial console | UART2, 1500000 baud, 8N1, with device-tree `stdout-path` |
 | Image boot logs | Native extlinux; serial and display kernel consoles, loglevel 8, earlycon enabled, systemd startup status shown; default systemd log routing retained |
-| Bluetooth | Board-specific alias to the BCM4345C0 firmware supplied by `armbian-firmware` |
+| Bluetooth | BCM4345C0 firmware alias; UART0 TX/RX mapped to DMAC1 requests 0/1; DMA operation pending hardware validation |
 
 Device-tree changes reside in the single `rk3399-eaidk-610-typec-fix` overlay.
 The upstream base DTB remains unchanged. Armbian's native EAIDK610 BSP package
@@ -113,6 +113,20 @@ These driver and scheduling changes are not yet build- or hardware-qualified.
 HDMI hotplug/playback, audio-thread realtime priority and runtime suspend/resume
 require verification with the updated kernel and boot arguments.
 
+## Watchdog
+
+The DesignWare watchdog's fixed timeout fallback matches the 16 counter
+ranges documented in RK3399 TRM V1.4 Part1, section 17.4. A missing
+`snps,watchdog-tops` warning does not itself mean the watchdog is unusable.
+The native BSP supplies a systemd manager drop-in enabling runtime watchdog
+monitoring with a requested 30-second timeout by default in new images.
+The reboot watchdog retains systemd's default 10-minute timeout. No separate
+watchdog daemon or device-tree change is required.
+
+The same runtime setting has been enabled on hardware; the driver reports an
+active watchdog and a 30-second timeout. Expiry-triggered reset, reboot
+persistence and the packaged image default remain hardware-unqualified.
+
 ## Validation coverage
 
 | Area | Verified scope |
@@ -129,6 +143,7 @@ require verification with the updated kernel and boot arguments.
 | Onboard microphone | Linux 7.2.4, r9 BSP with updated audio-clock overlay: reboot verified; codec MCLK follows I2S1 at 12.288 MHz and GPIO4_A0 is assigned. Two 10-second, 48 kHz S16_LE stereo captures with IN2/BST2 enabled produced nonzero samples without clipping; listening quality remains unqualified |
 | Analog audio configuration | Linux 7.2.4: updated overlay reboot verified; onboard 40 dB boost and 0 dB ADC gain confirmed; initial ALSA state restores and all four UCM routes apply successfully, including speaker pin mute and exclusive IN2/IN3 selection. PipeWire/WirePlumber run with the board profile. Physical jack switching, audible playback, headset capture, full-duplex streams, and additional sample formats remain unqualified |
 | Bluetooth | Board package 1.0.1: firmware patch build 0230 loads successfully |
+| Bluetooth UART DMA | Overlay mapping follows RK3399 TRM V1.4 Part1, table 12-2; DT compilation and merge checked. DMA channel acquisition, sustained traffic and suspend/resume remain unqualified |
 | Storage baseline | Linux 7.2.3 with board package 1.0.1: eMMC operates at HS200, 200 MHz, 8-bit, 1.8 V; SD operates at 50 MHz High Speed |
 | eMMC HS400 | Linux 7.2.3, AJTD4R eMMC: reboot from eMMC at 200 MHz, 8-bit, 1.8 V with CQE enabled; 512 MiB direct-I/O write/CRC32C readback passed, followed by a 12-second sequential read test; approximately 327 MiB/s read and 54 MiB/s write, with all MMC error counters zero |
 | SD UHS | Linux 7.2.3, SN128 SD card: SDR104 at 200 MHz, 4-bit, 1.8 V; 512 MiB direct-I/O write/CRC32C readback passed, followed by a 12-second sequential read test; approximately 86 MiB/s read and 71 MiB/s write, with all MMC error counters zero |
