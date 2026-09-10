@@ -41,7 +41,13 @@
   wrapper or reporting issue.
 - Use Armbian's native `SRC_EXTLINUX` flow with one boot entry and no recovery
   entry. Keep boot arguments in the board definition and let Armbian generate
-  the root UUID; the board image hook only adds the board overlay directive.
+  the root UUID; the board image hook adds the overlay directive and management marker.
+- Initial migration is explicit through the BSP's `eaidk610-boot-setup`; BSP
+  upgrades may refresh only entries marked `/etc/eaidk610/boot-managed`.
+  Keep packaged boot defaults generated from the board definition. U-Boot
+  flashing requires an explicit whole disk and a partition-boundary check.
+  Do not add backups or rollback to the setup tool; fail clearly and retain
+  atomic extlinux replacement without claiming power-loss-safe firmware writes.
 - Keep kernel logs visible on serial and display. Do not redirect systemd logs
   to the kernel buffer or change its rate limits.
 
@@ -62,7 +68,7 @@
 ## Release files
 
 - Publish the complete image as `eaidk610-armbian-edge.img.xz`; publish its
-  image, DTB, headers, libc-dev, and native BSP DEBs with short stable names.
+  image, DTB, headers, libc-dev, U-Boot, and native BSP DEBs with short stable names.
 - The BSP release filename is `armbian-bsp-eaidk610-edge.deb`; its Debian
   package name remains `armbian-bsp-cli-eaidk610-edge`.
 - Do not expose Armbian's internal artifact fingerprint in user-facing

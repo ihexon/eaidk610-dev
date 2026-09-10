@@ -28,7 +28,12 @@ FULL_DESKTOP="yes"
 BOOT_LOGO="desktop"
 HAS_VIDEO_OUTPUT="yes"
 PACKAGE_LIST_BOARD="device-tree-compiler alsa-ucm-conf pipewire pipewire-pulse wireplumber rtkit"
-EXTRA_BSPDEPS="armbian-firmware, alsa-ucm-conf"
+# Also required when installing the BSP outside the image builder.
+EXTRA_BSPDEPS="armbian-firmware, alsa-ucm-conf, pipewire, pipewire-pulse, wireplumber, rtkit, linux-image-edge-rockchip64, linux-dtb-edge-rockchip64, util-linux, fdisk, jq"
+# Board support does not require a matching version of Armbian's OS branding.
+BSP_BASE_FILES_DEPENDENCY="base-files"
+# Replace another board's native BSP through apt, not forced file overwrites.
+EXTRA_BSPCONFLICTS="armbian-bsp-cli"
 # The BSP supplies board-specific defaults, installed by the image hook below.
 ASOUND_STATE=""
 
@@ -36,6 +41,14 @@ ASOUND_STATE=""
 function post_family_config__eaidk610_boot_logging() {
 	MAIN_CMDLINE="${MAIN_CMDLINE// splash/}"
 	MAIN_CMDLINE="${MAIN_CMDLINE// plymouth.ignore-serial-consoles/}"
+}
+
+function pre_package_uboot_image__eaidk610_explicit_flash() {
+	# This board's firmware DEB is payload-only, even on a system that previously
+	# enabled Armbian's FORCE_UBOOT_UPDATE. Flashing needs an explicit disk.
+	function uboot_postinst_base() {
+		printf 'EAIDK610 U-Boot installed; use eaidk610-boot-setup --install-uboot DEVICE to flash explicitly.\n'
+	}
 }
 
 # Board assets are copied and hashed by Armbian's native BSP packaging flow.
@@ -48,6 +61,19 @@ function post_family_tweaks_bsp__eaidk610_overlay() {
 	chmod 0644 "${destination}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo"
 	ln -sfn ../BCM4345C0.hcd \
 		"${destination}/usr/lib/firmware/brcm/BCM4345C0.openailab,eaidk-610.hcd"
+	printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\n' \
+		"${SRC_CMDLINE} ${MAIN_CMDLINE:-rw}" "${BOOT_FDT_FILE}" \
+		> "${destination}/usr/share/eaidk610/boot-defaults"
+	# Include the maintainer action in this hashed hook's source.
+	function eaidk610_bsp_postinst() {
+		if [[ $1 == configure ]]; then
+			/usr/sbin/eaidk610-boot-setup --refresh || exit $?
+			if [[ ! -e /var/lib/alsa/asound.state ]]; then
+				install -D -m 0644 /usr/share/eaidk610/asound.state /var/lib/alsa/asound.state
+			fi
+		fi
+	}
+	postinst_functions+=(eaidk610_bsp_postinst)
 }
 
 function post_customize_image__eaidk610_extlinux_overlay() {
@@ -59,6 +85,8 @@ function post_customize_image__eaidk610_extlinux_overlay() {
 	sed -i '/^[[:space:]]*fdtoverlays[[:space:]]/Id' "${extlinux}"
 	printf '  fdtoverlays %soverlay-user/rk3399-eaidk-610-typec-fix.dtbo\n' \
 		"${kernel_path%/*}/" >> "${extlinux}"
+	install -d "${SDCARD}/etc/eaidk610"
+	touch "${SDCARD}/etc/eaidk610/boot-managed"
 }
 
 function post_customize_image__eaidk610_audio_defaults() {

@@ -40,7 +40,7 @@ The native `armbian-bsp-cli-eaidk610-edge` package contains the compiled overlay
 and Bluetooth firmware alias and is installed by Armbian. Image validation
 covers the bootloader area, partition layout, kernel/modules, board DTB, and
 enabled overlay. The image is compressed with XZ and published together with
-the kernel DEBs and board package. Failure diagnostics are retained for one day.
+the kernel, U-Boot and board DEBs. Failure diagnostics are retained for one day.
 
 ## Boot configuration
 
@@ -65,12 +65,57 @@ display consoles. Armbian's first-login setup remains enabled and starts after
 an interactive root login. This build-time default does not modify existing
 installations or previously released images.
 
-Installing the BSP DEB alone does not migrate an existing system to extlinux
-or rewrite its extlinux entries. Existing entries must reference the overlay:
+### Existing-system conversion
 
-```text
-FDTOVERLAYS /boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo
-```
+The BSP includes `eaidk610-boot-setup`. Initial conversion is explicit; installing
+the BSP does not take over an unmanaged boot configuration. Conversion selects
+the EAIDK610 DTB and overlay, generates a single extlinux entry, and uses the
+target root UUID. The extlinux entry is replaced atomically, then obsolete
+`boot.cmd`, `boot.scr`, and `armbianEnv.txt` files are removed on first conversion.
+No backup, rollback, recovery kernel, or recovery boot entry is provided.
 
-The BSP package does not rewrite existing extlinux entries. Changes to the
-kernel or boot-time device tree take effect after a reboot.
+The interface accepts `--root DIR` for a mounted offline installation,
+`--root-uuid UUID`, `--extra-args TEXT`, and `--install-uboot DEVICE`.
+`--help` describes usage. The kernel, DTB and BSP must already be installed in
+the target; its separate `/boot`, if present, must be mounted too. This is not
+a package installer or a disk-image writer.
+
+Supported storage is a plain ext4 root partition and an optional ext4/FAT boot
+partition. ARM64 Armbian Trixie is the reference system; other distribution
+versions, encrypted roots, LVM, and Btrfs layouts are not qualified. Different
+boards' images are not universally interchangeable. Offline package installation
+still requires a suitable ARM64 chroot environment, independently of this tool.
+
+`/etc/eaidk610/boot-managed` records explicit ownership of the entry. New project
+images also carry this marker. BSP upgrades refresh managed entries using the
+board definition's packaged defaults, preserving their root UUID and additional
+arguments while replacing board-owned arguments. Removing the marker opts out
+of automatic refresh. Custom extra arguments may be edited in `append` or passed
+with `--extra-args`; board-owned console/logging arguments remain authoritative.
+
+The native `linux-u-boot-eaidk610-edge` DEB supplies firmware from the same build.
+The setup tool flashes it only with `--install-uboot DEVICE`, using an explicit
+whole disk, checking 512-byte sectors and partition boundaries before writing
+the binman image at byte 32768. It never infers the boot disk from the root disk.
+Errors stop the operation but do not undo completed steps. In particular, a
+failed or interrupted firmware write may leave the board unable to boot and
+require external recovery media. Atomic extlinux replacement does not make the
+entire conversion or firmware write power-loss-safe.
+Storage layouts without room for the firmware require a different image/layout;
+the tool does not resize partitions. EAIDK610's native U-Boot packaging hook
+disables automatic flashing, including on systems that previously enabled
+Armbian's `FORCE_UBOOT_UPDATE` mechanism.
+
+EAIDK610's BSP depends on `base-files` without tying its version to Armbian's
+branding release. Other boards retain the upstream version constraint. The BSP
+declares its kernel, DTB, firmware and audio runtime dependencies, and conflicts
+with other native BSP providers so apt can replace them without forced file
+overwrites. The historical `eaidk610-board-overlays` package must still be
+removed explicitly before BSP installation. Existing ALSA state is preserved;
+board defaults are installed only when no saved state exists.
+
+Fixture tests cover conversion, refresh, root/boot paths, user arguments,
+incomplete installations and firmware write bounds. Real-board migration and
+firmware flashing with this tool are not yet hardware-validated. Changes to the
+kernel or boot-time device tree take effect after a reboot; the tool never
+reboots automatically.

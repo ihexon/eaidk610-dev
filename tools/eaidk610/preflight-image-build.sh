@@ -57,6 +57,8 @@ cp -a "${repo_root}/config/optional/boards/eaidk610/_packages/bsp-cli/." "${cust
 destination=${customizer_root} post_family_tweaks_bsp__eaidk610_overlay
 [[ -x ${customizer_root}/usr/bin/eaidk610-typec ]] || fail 'Type-C userspace tool is missing or not executable'
 "${customizer_root}/usr/bin/eaidk610-typec" --help >/dev/null
+[[ -x ${customizer_root}/usr/sbin/eaidk610-boot-setup ]] || fail 'boot setup tool is missing or not executable'
+"${customizer_root}/usr/sbin/eaidk610-boot-setup" --help >/dev/null
 [[ $(readlink "${customizer_root}/usr/lib/firmware/brcm/BCM4345C0.openailab,eaidk-610.hcd") == ../BCM4345C0.hcd ]]
 extlinux="${customizer_root}/boot/extlinux/extlinux.conf"
 install -D -m 0644 /dev/null "${extlinux}"
@@ -67,6 +69,7 @@ SDCARD=${customizer_root} post_customize_image__eaidk610_audio_defaults
 cmp "${customizer_root}/usr/share/eaidk610/asound.state" "${customizer_root}/var/lib/alsa/asound.state"
 grep -Fqx "  fdtoverlays /boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo" "${extlinux}"
 [[ -s ${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo ]]
+[[ -f ${customizer_root}/etc/eaidk610/boot-managed ]]
 # RT5651 DAPM widget names are case-sensitive; MICBIAS1 prevents card registration.
 audio_routing=$(fdtget -t s \
 	"${customizer_root}/boot/overlay-user/${TYPEC_OVERLAY_NAME}.dtbo" \

@@ -276,7 +276,8 @@ function reversion_armbian-bsp-cli_deb_contents() {
 	# Depends: ${EXTRA_BSPDEPS} — opt-in slot for family/board-specific runtime deb-Depends.
 	#         Use this (not PACKAGE_LIST_BOARD) when configure-ordering matters:
 	#         only deb-Depends guarantees the dep is configured before this BSP's postinst runs.
-	declare depends_base_files=", base-files (>= ${REVISION})"
+	# Boards may support installing their BSP without upgrading OS branding.
+	declare depends_base_files=", ${BSP_BASE_FILES_DEPENDENCY:-base-files (>= ${REVISION})}"
 	if [[ "${KEEP_ORIGINAL_OS_RELEASE:-"no"}" == "yes" ]]; then
 		depends_base_files=""
 	fi
@@ -288,7 +289,7 @@ function reversion_armbian-bsp-cli_deb_contents() {
 		Depends: bash, linux-base, u-boot-tools, initramfs-tools, lsb-release, fping, device-tree-compiler${depends_base_files}${EXTRA_BSPDEPS:+, ${EXTRA_BSPDEPS}}
 		Replaces: zram-config, linux-sysctl-defaults, armbian-bsp-cli-${BOARD}${EXTRA_BSP_NAME} (<< ${REVISION})
 		Breaks: armbian-bsp-cli-${BOARD}${EXTRA_BSP_NAME} (<< ${REVISION})
-		Conflicts: linux-sysctl-defaults
+		Conflicts: linux-sysctl-defaults${EXTRA_BSPCONFLICTS:+, ${EXTRA_BSPCONFLICTS}}
 		Provides: armbian-bsp-cli, linux-sysctl-defaults
 	EOF
 

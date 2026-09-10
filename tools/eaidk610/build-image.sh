@@ -64,6 +64,7 @@ copy_package linux-dtb-edge-rockchip64 linux-dtb-eaidk610-edge.deb
 copy_package linux-headers-edge-rockchip64 linux-headers-eaidk610-edge.deb
 copy_package linux-libc-dev-edge-rockchip64 linux-libc-dev-eaidk610-edge.deb
 copy_package armbian-bsp-cli-eaidk610-edge armbian-bsp-eaidk610-edge.deb
+copy_package linux-u-boot-eaidk610-edge linux-u-boot-eaidk610-edge.deb
 
 compressed_tmp="${compressed_image}.tmp"
 xz -T0 -6 --stdout "${image_path}" > "${compressed_tmp}"
@@ -85,6 +86,9 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf 'board_package_sha256=%s\n' "$(sha256sum "${bsp_package}" | awk '{print $1}')"
 	printf 'kernel_package_version=%s\n' \
 		"$(dpkg-deb --field "${release_dir}/linux-image-eaidk610-edge.deb" Version)"
+	printf 'bsp_package_version=%s\n' "$(dpkg-deb --field "${bsp_package}" Version)"
+	printf 'u_boot_package_version=%s\n' \
+		"$(dpkg-deb --field "${release_dir}/linux-u-boot-eaidk610-edge.deb" Version)"
 	printf 'image=%s\n' "$(basename "${compressed_image}")"
 } > "${release_dir}/BUILD-MANIFEST.txt"
 
@@ -99,6 +103,8 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf -- '- Power qualification: independent 12V board supply required; one 5V PD contract and partner-initiated power-role swap tested; sustained 1.8A output and broader interoperability remain unqualified\n'
 	printf -- '- Kernel packages: image, DTB, headers, and libc development files\n'
 	printf -- '- Board package: armbian-bsp-eaidk610-edge.deb, includes the default board overlay and eaidk610-typec userspace control tool\n'
+	printf -- '- Migration: BSP includes eaidk610-boot-setup for explicit extlinux conversion; subsequent BSP upgrades refresh managed entries only\n'
+	printf -- '- U-Boot package: linux-u-boot-eaidk610-edge.deb; installing firmware files never flashes a disk automatically\n'
 	printf -- '- Boot: native extlinux, one entry, serial and display kernel logs\n'
 	printf -- '- Boot fixes: serial stdout-path and EAIDK610 Bluetooth firmware alias\n'
 	printf -- '- Board overlay: Type-C extcon/role switching, USB3 PHY orientation, headphone detection, and speaker amplifier GPIO\n\n'
@@ -114,6 +120,7 @@ mv "${compressed_tmp}" "${compressed_image}"
 		linux-headers-eaidk610-edge.deb \
 		linux-libc-dev-eaidk610-edge.deb \
 		armbian-bsp-eaidk610-edge.deb \
+		linux-u-boot-eaidk610-edge.deb \
 		BUILD-MANIFEST.txt > SHA256SUMS
 )
 

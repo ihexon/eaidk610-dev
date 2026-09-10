@@ -65,6 +65,9 @@ overlay_owner=$(dpkg-query --admindir="${mount_dir}/var/lib/dpkg" -S \
 [[ ${overlay_owner} == armbian-bsp-cli-eaidk610-edge ]] || \
 	fail 'Type-C overlay is not owned by the native EAIDK610 BSP package'
 [[ -x ${mount_dir}/usr/bin/eaidk610-typec ]] || fail 'Type-C userspace tool is missing or not executable'
+[[ -x ${mount_dir}/usr/sbin/eaidk610-boot-setup && -s ${mount_dir}/usr/share/eaidk610/boot-defaults ]] || \
+	fail 'BSP boot configuration support is missing'
+[[ -f ${mount_dir}/etc/eaidk610/boot-managed ]] || fail 'image boot entry is not managed by the BSP'
 kernel_image=$(find "${mount_dir}/boot" -maxdepth 1 -type f \
 	-name 'vmlinuz-*edge-rockchip64' -print -quit)
 module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \

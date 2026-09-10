@@ -1,0 +1,171 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+set -euo pipefail
+
+fail() { printf 'eaidk610-boot-setup: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+	printf '%s\n' \
+		'Usage: eaidk610-boot-setup [--root DIR] [--root-uuid UUID]' \
+		'                           [--extra-args TEXT] [--install-uboot DEVICE]' \
+		'       eaidk610-boot-setup --refresh' \
+		'' \
+		'Explicitly convert an installed ARM64 Armbian system to EAIDK610 extlinux.' \
+		'Install the kernel, DTB and BSP DEBs first. Default target: running system.' \
+		'For offline conversion, mount the target root and its /boot, then use --root.' \
+		'Only plain ext4 root and ext4/FAT boot filesystems are supported.' \
+		'--extra-args replaces additional arguments; otherwise existing extras are kept.' \
+		'Old boot scripts/configuration are removed on the first conversion.' \
+		'No backups or rollback are provided; a failed flash may require recovery media.' \
+		'--install-uboot explicitly writes the packaged firmware to an SD/eMMC disk.' \
+		'It never guesses the disk, repartitions, installs packages, or reboots.' \
+		'--refresh is for BSP upgrades: only an already managed entry is updated.'
+}
+
+require_root() { (( EUID == 0 )) || fail 'use sudo'; }
+
+# Keep user arguments, but replace keys owned by the board definition.
+extra_arguments() {
+	local previous=$1 defaults=$2 word key
+	local -a words=() managed=()
+	read -r -a words <<< "${previous}"
+	read -r -a managed <<< "${defaults} root= quiet splash plymouth.ignore-serial-consoles"
+	for word in "${words[@]}"; do
+		key=${word%%=*}
+		local owned=no item
+		for item in "${managed[@]}"; do
+			[[ ${key} != "${item%%=*}" ]] || owned=yes
+		done
+		[[ ${owned} == yes ]] || printf '%s ' "${word}"
+	done
+}
+
+check_uboot_layout() {
+	local firmware=$1 table=$2 first end
+	first=$(jq -er '.partitiontable | select(.label == "dos" or .label == "gpt") |
+		select((.firstlba // 34) <= 64) | .partitions | map(.start) | min // empty' <<< "${table}") ||
+		fail 'unsupported or missing partition table'
+	end=$((32768 + $(stat -c %s "${firmware}")))
+	(( end <= first * 512 )) || fail 'U-Boot would overlap a partition; use the complete EAIDK610 image'
+}
+
+check_uboot() {
+	local disk=$1 firmware=$2 table
+	[[ -s ${firmware} ]] || fail 'install linux-u-boot-eaidk610-edge before flashing'
+	[[ -b ${disk} && $(lsblk -dnro TYPE "${disk}") == disk ]] || fail 'U-Boot target must be a whole SD/eMMC disk'
+	[[ $(blockdev --getss "${disk}") == 512 ]] || fail 'U-Boot target must use 512-byte sectors'
+	table=$(sfdisk --json "${disk}")
+	check_uboot_layout "${firmware}" "${table}"
+}
+
+main() {
+	local root=/ root_uuid='' extra='' extra_set=no disk='' refresh=no
+	while (( $# )); do
+		case $1 in
+			--help|-h) usage; return 0 ;;
+			--refresh) refresh=yes; shift ;;
+			--root|--root-uuid|--extra-args|--install-uboot)
+				(( $# >= 2 )) || fail "missing value for $1"
+				case $1 in
+					--root) root=$2 ;;
+					--root-uuid) root_uuid=$2 ;;
+					--extra-args) extra=$2; extra_set=yes ;;
+					--install-uboot) disk=$2 ;;
+				esac
+				shift 2 ;;
+			*) fail "unknown option: $1" ;;
+		esac
+	done
+	require_root
+	root=$(realpath -e -- "${root}")
+	local prefix=${root%/} boot=${root%/}/boot
+	local config=${root%/}/boot/extlinux/extlinux.conf
+	local state=${root%/}/etc/eaidk610/boot-managed
+	if [[ ${refresh} == yes ]]; then
+		[[ -z ${disk} && ${extra_set} == no && -z ${root_uuid} ]] || fail '--refresh cannot change migration options'
+		[[ -f ${state} ]] || return 0
+	fi
+	[[ -f ${prefix}/etc/armbian-release ]] || fail 'target is not an installed Armbian system'
+	[[ $(dpkg-query --admindir="${prefix}/var/lib/dpkg" -W -f='${Architecture}' linux-image-edge-rockchip64) == arm64 ]] ||
+		fail 'install the ARM64 rockchip64 kernel in the target first'
+	local BOARD_CMDLINE='' BOOT_DTB=''
+	# Generated from the native board definition, not a second set of defaults.
+	# shellcheck source=/dev/null
+	source "${prefix}/usr/share/eaidk610/boot-defaults"
+	[[ -n ${BOARD_CMDLINE} && -n ${BOOT_DTB} ]] || fail 'BSP boot defaults are missing'
+	local path
+	for path in Image uInitrd "dtb/${BOOT_DTB}" overlay-user/rk3399-eaidk-610-typec-fix.dtbo; do
+		[[ -s ${boot}/${path} ]] || fail "missing /boot/${path}; finish installing packages/initramfs first"
+	done
+	local previous=
+	if [[ -f ${config} ]]; then
+		previous=$(awk 'tolower($1) == "append" {$1=""; sub(/^ +/, ""); print; exit}' "${config}")
+	elif [[ -f ${boot}/armbianEnv.txt ]]; then
+		previous=$(sed -n 's/^extraargs=//p' "${boot}/armbianEnv.txt")
+	fi
+	# During dpkg/chroot upgrades retain the installed root, never the build host's.
+	if [[ ${refresh} == yes ]]; then
+		root_uuid=$(awk '{for (i=1;i<=NF;i++) if ($i ~ /^root=UUID=/) {sub(/^root=UUID=/,"",$i); print $i; exit}}' <<< "${previous}")
+	else
+		[[ $(findmnt -n -M "${root}" -o FSTYPE) == ext4 ]] || fail 'mount a plain ext4 target root (no LUKS/LVM/subvolumes)'
+		[[ $(lsblk -dnro TYPE "$(findmnt -n -M "${root}" -o SOURCE)") == part ]] ||
+			fail 'target root must be a plain partition (no LUKS/LVM)'
+		[[ -n ${root_uuid} ]] || root_uuid=$(findmnt -n -M "${root}" -o UUID)
+	fi
+	[[ ${root_uuid} =~ ^[0-9a-fA-F-]+$ ]] || fail 'cannot determine target root UUID; use --root-uuid'
+	[[ ${extra_set} == yes ]] || extra=${previous}
+	[[ ${extra} != *$'\n'* && ${extra} != *$'\r'* ]] || fail 'extra arguments must be one line'
+	extra=$(extra_arguments "${extra}" "${BOARD_CMDLINE}")
+	local boot_prefix=/boot/ boot_fs
+	if mountpoint -q "${boot}"; then
+		boot_prefix=/
+		boot_fs=$(findmnt -n -M "${boot}" -o FSTYPE)
+		[[ ${boot_fs} == ext4 || ${boot_fs} == vfat ]] || fail 'unsupported boot filesystem'
+	fi
+	# An unmounted separate /boot must not be mistaken for a root-contained /boot.
+	if [[ ${boot_prefix} == /boot/ ]] && awk '$1 !~ /^#/ && $2 == "/boot" {found=1} END {exit !found}' "${prefix}/etc/fstab"; then
+		fail 'mount the target /boot before running this tool'
+	fi
+	local firmware=${prefix}/usr/lib/linux-u-boot-edge-eaidk610/u-boot-rockchip.bin
+	if [[ -n ${disk} ]]; then
+		disk=$(realpath -e -- "${disk}")
+		check_uboot "${disk}" "${firmware}"
+	fi
+	mkdir -p "${boot}/extlinux" "${prefix}/etc/eaidk610"
+	local staged
+	staged=$(mktemp "${boot}/extlinux/.eaidk610.XXXXXX")
+	# Each invocation runs in its own process; remove only its temporary entry.
+	trap 'rm -f -- "${staged}"' EXIT
+	{
+		printf '# Managed by eaidk610-boot-setup; additional append arguments are retained.\n'
+		printf 'label EAIDK610\n'
+		printf '  kernel %sImage\n  initrd %suInitrd\n' "${boot_prefix}" "${boot_prefix}"
+		printf '  fdt %sdtb/%s\n' "${boot_prefix}" "${BOOT_DTB}"
+		printf '  fdtoverlays %soverlay-user/rk3399-eaidk-610-typec-fix.dtbo\n' "${boot_prefix}"
+		printf '  append root=UUID=%s %s %s\n' "${root_uuid}" "${BOARD_CMDLINE}" "${extra}"
+	} > "${staged}"
+	chmod 0644 "${staged}"
+	# Retire legacy scripts only after the replacement entry exists.
+	# Deliberately no backup, recovery entry, or rollback mechanism.
+	mv -fT -- "${staged}" "${config}"
+	trap - EXIT
+	if [[ ! -f ${state} ]]; then
+		for path in boot.scr boot.cmd armbianEnv.txt; do
+			if [[ -e ${boot}/${path} || -L ${boot}/${path} ]]; then
+				rm -- "${boot}/${path}"
+				printf 'Removed obsolete boot selector: %s (no backup)\n' "${boot}/${path}"
+			fi
+		done
+	fi
+	touch "${state}"
+	if [[ -n ${disk} ]]; then
+		printf 'Writing EAIDK610 U-Boot to %s at byte 32768\n' "${disk}"
+		dd if="${firmware}" of="${disk}" bs=32K seek=1 conv=notrunc,fsync status=progress
+	fi
+	sync
+	printf 'EAIDK610 extlinux configured: %s (root UUID %s). No reboot performed.\n' "${config}" "${root_uuid}"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	main "$@"
+fi

@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install --yes \
             binutils device-tree-compiler fdisk jq shellcheck util-linux xz-utils
 
-      - name: Lint scripts and test Type-C tool
+      - name: Lint scripts and test board tools
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -57,9 +57,12 @@ jobs:
             tools/eaidk610/build-image.sh \
             tools/eaidk610/validate-image.sh \
             tools/eaidk610/test-typec-tool.sh \
-            config/optional/boards/eaidk610/_packages/bsp-cli/usr/bin/eaidk610-typec
+            tools/eaidk610/test-boot-setup.sh \
+            config/optional/boards/eaidk610/_packages/bsp-cli/usr/bin/eaidk610-typec \
+            config/optional/boards/eaidk610/_packages/bsp-cli/usr/sbin/eaidk610-boot-setup
           shellcheck -S warning -s bash config/boards/eaidk610.csc
           tools/eaidk610/test-typec-tool.sh
+          tools/eaidk610/test-boot-setup.sh
 
       - name: Build and validate complete image
         shell: bash
@@ -95,5 +98,6 @@ jobs:
             artifacts/release/linux-headers-eaidk610-edge.deb \
             artifacts/release/linux-libc-dev-eaidk610-edge.deb \
             artifacts/release/armbian-bsp-eaidk610-edge.deb \
+            artifacts/release/linux-u-boot-eaidk610-edge.deb \
             artifacts/release/SHA256SUMS \
             artifacts/release/BUILD-MANIFEST.txt
