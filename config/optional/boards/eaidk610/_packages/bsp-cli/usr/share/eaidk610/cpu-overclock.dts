@@ -1,0 +1,36 @@
+/include/ "rk3399-eaidk-610-typec-fix.dts"
+
+/* Optional CPU operating points based on ImmortalWrt's 2.2/1.8 GHz table.
+ * A53 1.8 GHz uses 1.2875 V, as tested on EAIDK610.
+ * Enabled only by eaidk610-boot-setup --cpu-overclock on.
+ * WARNING: 1.325 V exceeds RK3399's 1.30 V absolute maximum rating.
+ * Not a production default or a guarantee of safety/stability.
+ */
+/ {
+	fragment@100 {
+		target-path = "/opp-table-0";
+		__overlay__ {
+			opp-1608000000 {
+				opp-hz = /bits/ 64 <1608000000>;
+				opp-microvolt = <1225000>;
+			};
+			opp-1800000000 {
+				opp-hz = /bits/ 64 <1800000000>;
+				opp-microvolt = <1287500>;
+			};
+		};
+	};
+	fragment@101 {
+		target-path = "/opp-table-1";
+		__overlay__ {
+			opp-2016000000 {
+				opp-hz = /bits/ 64 <2016000000>;
+				opp-microvolt = <1250000>;
+			};
+			opp-2208000000 {
+				opp-hz = /bits/ 64 <2208000000>;
+				opp-microvolt = <1325000>;
+			};
+		};
+	};
+};

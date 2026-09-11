@@ -13,7 +13,12 @@ require_root() { :; }
 dpkg-query() { printf '%s' "${mock_arch:-arm64}"; }
 findmnt() {
 	case ${*: -1} in
-		FSTYPE) printf '%s\n' "${mock_fs:-ext4}" ;;
+		FSTYPE)
+			if [[ " $* " == *" -M ${fixture}/boot "* ]]; then
+				printf '%s\n' "${mock_boot_fs:-ext4}"
+			else
+				printf '%s\n' "${mock_fs:-ext4}"
+			fi ;;
 		UUID) printf '%s\n' 11111111-2222-3333-4444-555555555555 ;;
 		SOURCE) printf '%s\n' /dev/fixturep1 ;;
 	esac
@@ -36,12 +41,13 @@ expect_failure() {
 }
 setup_fixture() {
 	mkdir -p "${fixture}/boot/dtb/rockchip" "${fixture}/boot/overlay-user" \
-		"${fixture}/etc" "${fixture}/usr/share/eaidk610" "${fixture}/var/lib/dpkg"
+		"${fixture}/etc/default" "${fixture}/usr/share/eaidk610" "${fixture}/var/lib/dpkg"
 	printf 'BOARD=eaidk610\n' > "${fixture}/etc/armbian-release"
 	printf '# root mount\n' > "${fixture}/etc/fstab"
-	printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\n' \
+	printf 'MIN_SPEED=408000\nMAX_SPEED=2016000\nGOVERNOR=ondemand\n' > "${fixture}/etc/default/cpufrequtils"
+	printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\nCPU_MAX_DEFAULT=%q\n' \
 		'rootwait console=tty1 console=ttyS2,1500000n8 earlycon loglevel=8 systemd.show_status=yes rt_group_sched=0 rw' \
-		'rockchip/rk3399-eaidk-610.dtb' > "${fixture}/usr/share/eaidk610/boot-defaults"
+		'rockchip/rk3399-eaidk-610.dtb' 2016000 > "${fixture}/usr/share/eaidk610/boot-defaults"
 	local path
 	for path in Image uInitrd dtb/rockchip/rk3399-eaidk-610.dtb overlay-user/rk3399-eaidk-610-typec-fix.dtbo; do
 		printf 'fixture\n' > "${fixture}/boot/${path}"
@@ -51,6 +57,8 @@ setup_fixture() {
 (main --help) >/dev/null
 expect_failure main --unknown
 expect_failure main --root
+expect_failure main --cpu-overclock
+expect_failure main --cpu-overclock invalid
 setup_fixture
 # Ordinary package installation must not take over an unmanaged system.
 (main --root "${fixture}" --refresh)
@@ -71,6 +79,8 @@ grep -Fq 'custom=value' "${config}"
 [[ ! -e ${fixture}/boot/armbianEnv.txt && ! -e ${fixture}/boot/boot.cmd ]]
 [[ $(find "${fixture}/boot" -name 'eaidk610-previous-boot*' | wc -l) == 0 ]]
 [[ ! -e ${test_tmp}/disk-writes ]]
+[[ ! -e ${fixture}/etc/eaidk610/cpu-overclock ]]
+grep -Fxq MAX_SPEED=2016000 "${fixture}/etc/default/cpufrequtils"
 
 # Idempotent upgrades retain root/user arguments, including in a chroot where
 # findmnt would report the host. They do not require a mounted root device.
@@ -79,9 +89,9 @@ cp "${config}" "${test_tmp}/before"
 cmp "${config}" "${test_tmp}/before"
 
 # Update managed defaults without dropping user extras.
-printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\n' \
+printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\nCPU_MAX_DEFAULT=%q\n' \
 	'rootwait console=tty1 console=ttyS2,1500000n8 earlycon loglevel=8 systemd.show_status=yes rt_group_sched=0 rw new_board_option=1' \
-	'rockchip/rk3399-eaidk-610.dtb' > "${fixture}/usr/share/eaidk610/boot-defaults"
+	'rockchip/rk3399-eaidk-610.dtb' 2016000 > "${fixture}/usr/share/eaidk610/boot-defaults"
 (main --root "${fixture}" --refresh) >/dev/null
 grep -Fq 'new_board_option=1' "${config}"
 grep -Fq 'custom=value' "${config}"
@@ -141,6 +151,61 @@ failed_flash() {
 expect_failure failed_flash
 ! grep -q 'No reboot performed' "${test_tmp}/error"
 
+# Real dtc/fdtoverlay tests: opt-in CPU OPPs with a minimal board-fix fixture.
+assets=${fixture}/usr/share/eaidk610
+dtc -q -I dts -O dtb -o "${fixture}/boot/dtb/rockchip/rk3399-eaidk-610.dtb" <<'DTS'
+/dts-v1/;
+/ {
+ opp-table-0 { opp-1416000000 { opp-hz = /bits/ 64 <1416000000>; opp-microvolt = <1125000>; }; };
+ opp-table-1 { opp-1800000000 { opp-hz = /bits/ 64 <1800000000>; opp-microvolt = <1200000>; }; };
+};
+DTS
+printf '%s\n' '/dts-v1/; /plugin/; / { fragment@0 { target-path = "/"; __overlay__ { board-fix = "retained"; }; }; };' \
+	> "${assets}/rk3399-eaidk-610-typec-fix.dts"
+cp "${repo}/config/optional/boards/eaidk610/_packages/bsp-cli/usr/share/eaidk610/cpu-overclock.dts" "${assets}/"
+(main --root "${fixture}" --cpu-overclock on) >/dev/null
+grep -Fxq on "${fixture}/etc/eaidk610/cpu-overclock"
+grep -Fxq MAX_SPEED=2208000 "${fixture}/etc/default/cpufrequtils"
+grep -Fxq GOVERNOR=ondemand "${fixture}/etc/default/cpufrequtils"
+overlay=${fixture}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo
+fdtoverlay -i "${fixture}/boot/dtb/rockchip/rk3399-eaidk-610.dtb" -o "${test_tmp}/merged.dtb" "${overlay}"
+[[ $(fdtget -t u "${test_tmp}/merged.dtb" /opp-table-0/opp-1800000000 opp-microvolt) == 1287500 ]]
+[[ $(fdtget -t u "${test_tmp}/merged.dtb" /opp-table-1/opp-2208000000 opp-microvolt) == 1325000 ]]
+[[ $(fdtget -t s "${test_tmp}/merged.dtb" / board-fix) == retained ]]
+cp "${overlay}" "${test_tmp}/overclock.dtbo"
+
+# A BSP upgrade replaces the packaged DTBO; refresh must restore the user's
+# choice while preserving a subsequently customized CPU limit.
+printf 'BSP replaced overlay\n' > "${overlay}"
+sed -i s/MAX_SPEED=2208000/MAX_SPEED=2016000/ "${fixture}/etc/default/cpufrequtils"
+(findmnt() { return 1; }; main --root "${fixture}" --refresh) >/dev/null
+cmp "${overlay}" "${test_tmp}/overclock.dtbo"
+grep -Fxq MAX_SPEED=2016000 "${fixture}/etc/default/cpufrequtils"
+expect_failure main --root "${fixture}" --refresh --cpu-overclock off
+
+# A failed compile must not replace the overlay, boot entry, CPU limit or state.
+cp "${config}" "${test_tmp}/before-cpu-failure"
+failed_cpu_compile() { dtc() { return 1; }; main --root "${fixture}" --cpu-overclock off; }
+expect_failure failed_cpu_compile
+cmp "${overlay}" "${test_tmp}/overclock.dtbo"
+cmp "${config}" "${test_tmp}/before-cpu-failure"
+grep -Fxq on "${fixture}/etc/eaidk610/cpu-overclock"
+grep -Fxq MAX_SPEED=2016000 "${fixture}/etc/default/cpufrequtils"
+[[ -z $(find "${fixture}/boot/overlay-user" -name '.eaidk610-cpu.*' -print -quit) ]]
+
+# Off also works with a separate FAT boot partition and retains non-CPU fixes.
+(mock_separate_boot=yes; mock_boot_fs=vfat; main --root "${fixture}" --cpu-overclock off) >/dev/null
+grep -Fxq '  kernel /Image' "${config}"
+grep -Fxq off "${fixture}/etc/eaidk610/cpu-overclock"
+grep -Fxq MAX_SPEED=2016000 "${fixture}/etc/default/cpufrequtils"
+fdtoverlay -i "${fixture}/boot/dtb/rockchip/rk3399-eaidk-610.dtb" -o "${test_tmp}/merged.dtb" "${overlay}"
+! fdtget "${test_tmp}/merged.dtb" /opp-table-1/opp-2208000000 opp-hz >/dev/null 2>&1
+[[ $(fdtget -t s "${test_tmp}/merged.dtb" / board-fix) == retained ]]
+cp "${overlay}" "${test_tmp}/default.dtbo"
+(mock_separate_boot=yes; main --root "${fixture}" --refresh) >/dev/null
+cmp "${overlay}" "${test_tmp}/default.dtbo"
+[[ $(wc -l < "${test_tmp}/disk-writes") == 1 ]]
+
 # Native BSP/U-Boot hook integration and real Debian control serialization,
 # without running the Armbian configuration or compiler.
 (
@@ -165,6 +230,7 @@ expect_failure failed_flash
 	deps=$(dpkg-deb -f "${test_tmp}/bsp.deb" Depends)
 	[[ ${deps} == *', base-files,'* && ${deps} != *'base-files ('* ]]
 	[[ ${deps} == *linux-image-edge-rockchip64* && ${deps} == *linux-dtb-edge-rockchip64* ]]
+	[[ ${deps} == *device-tree-compiler* ]]
 	[[ $(dpkg-deb -f "${test_tmp}/bsp.deb" Conflicts) == *armbian-bsp-cli* ]]
 	# Other boards keep their existing version constraint.
 	unset BSP_BASE_FILES_DEPENDENCY

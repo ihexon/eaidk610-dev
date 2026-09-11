@@ -75,7 +75,8 @@ target root UUID. The extlinux entry is replaced atomically, then obsolete
 No backup, rollback, recovery kernel, or recovery boot entry is provided.
 
 The interface accepts `--root DIR` for a mounted offline installation,
-`--root-uuid UUID`, `--extra-args TEXT`, and `--install-uboot DEVICE`.
+`--root-uuid UUID`, `--extra-args TEXT`, `--install-uboot DEVICE`, and
+`--cpu-overclock on|off` (default off; see [CPU configuration](hardware.md#optional-cpu-overclocking)).
 `--help` describes usage. The kernel, DTB and BSP must already be installed in
 the target; its separate `/boot`, if present, must be mounted too. This is not
 a package installer or a disk-image writer.

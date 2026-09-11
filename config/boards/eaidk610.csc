@@ -29,7 +29,7 @@ BOOT_LOGO="desktop"
 HAS_VIDEO_OUTPUT="yes"
 PACKAGE_LIST_BOARD="device-tree-compiler alsa-ucm-conf pipewire pipewire-pulse wireplumber rtkit"
 # Also required when installing the BSP outside the image builder.
-EXTRA_BSPDEPS="armbian-firmware, alsa-ucm-conf, pipewire, pipewire-pulse, wireplumber, rtkit, linux-image-edge-rockchip64, linux-dtb-edge-rockchip64, util-linux, fdisk, jq"
+EXTRA_BSPDEPS="armbian-firmware, alsa-ucm-conf, pipewire, pipewire-pulse, wireplumber, rtkit, linux-image-edge-rockchip64, linux-dtb-edge-rockchip64, device-tree-compiler, util-linux, fdisk, jq"
 # Board support does not require a matching version of Armbian's OS branding.
 BSP_BASE_FILES_DEPENDENCY="base-files"
 # Replace another board's native BSP through apt, not forced file overwrites.
@@ -61,8 +61,8 @@ function post_family_tweaks_bsp__eaidk610_overlay() {
 	chmod 0644 "${destination}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo"
 	ln -sfn ../BCM4345C0.hcd \
 		"${destination}/usr/lib/firmware/brcm/BCM4345C0.openailab,eaidk-610.hcd"
-	printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\n' \
-		"${SRC_CMDLINE} ${MAIN_CMDLINE:-rw}" "${BOOT_FDT_FILE}" \
+	printf 'BOARD_CMDLINE=%q\nBOOT_DTB=%q\nCPU_MAX_DEFAULT=%q\n' \
+		"${SRC_CMDLINE} ${MAIN_CMDLINE:-rw}" "${BOOT_FDT_FILE}" "${CPUMAX:-2016000}" \
 		> "${destination}/usr/share/eaidk610/boot-defaults"
 	# Include the maintainer action in this hashed hook's source.
 	function eaidk610_bsp_postinst() {

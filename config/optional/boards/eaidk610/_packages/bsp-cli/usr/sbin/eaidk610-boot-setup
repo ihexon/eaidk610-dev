@@ -8,6 +8,7 @@ usage() {
 	printf '%s\n' \
 		'Usage: eaidk610-boot-setup [--root DIR] [--root-uuid UUID]' \
 		'                           [--extra-args TEXT] [--install-uboot DEVICE]' \
+		'                           [--cpu-overclock on|off]' \
 		'       eaidk610-boot-setup --refresh' \
 		'' \
 		'Explicitly convert an installed ARM64 Armbian system to EAIDK610 extlinux.' \
@@ -19,7 +20,11 @@ usage() {
 		'No backups or rollback are provided; a failed flash may require recovery media.' \
 		'--install-uboot explicitly writes the packaged firmware to an SD/eMMC disk.' \
 		'It never guesses the disk, repartitions, installs packages, or reboots.' \
-		'--refresh is for BSP upgrades: only an already managed entry is updated.'
+		'--refresh is for BSP upgrades: only an already managed entry is updated.' \
+		'--cpu-overclock on enables A72 2.208 GHz/1.325 V and A53 1.800 GHz/1.2875 V.' \
+		'WARNING: A72 voltage exceeds the 1.30 V absolute maximum; hardware damage is possible.' \
+		'Overclocking is off by default. off restores board CPU defaults, retaining other fixes.' \
+		'The selection survives BSP upgrades. Changes take effect after a manual reboot.'
 }
 
 require_root() { (( EUID == 0 )) || fail 'use sudo'; }
@@ -58,37 +63,79 @@ check_uboot() {
 	check_uboot_layout "${firmware}" "${table}"
 }
 
+# Compile one complete board overlay, never replace the upstream base DTB.
+# Run in a subshell so cleanup does not replace main's extlinux trap.
+configure_cpu_overlay() (
+	local prefix=$1 mode=$2 change_limit=$3 dtb=$4 default_max=$5
+	local assets=${prefix}/usr/share/eaidk610 boot=${prefix}/boot
+	local source=rk3399-eaidk-610-typec-fix.dts max=${default_max}
+	local work cpu_staged=''
+	if [[ ${mode} == on ]]; then
+		source=cpu-overclock.dts
+		max=2208000
+		printf 'WARNING: experimental CPU overclock; A72 1.325 V exceeds the 1.30 V absolute maximum. Hardware damage is possible.\n' >&2
+	fi
+	if [[ ${change_limit} == yes ]]; then
+		[[ ${max} =~ ^[0-9]+$ && -f ${prefix}/etc/default/cpufrequtils ]] ||
+			fail 'CPU defaults or /etc/default/cpufrequtils are missing'
+	fi
+	work=$(mktemp -d "${boot}/overlay-user/.eaidk610-cpu.XXXXXX")
+	trap 'rm -r -- "${work}"; if [[ -n ${cpu_staged} ]]; then rm -f -- "${cpu_staged}"; fi' EXIT
+	dtc -q -@ -I dts -O dtb -i "${assets}" -o "${work}/overlay.dtbo" "${assets}/${source}"
+	fdtoverlay -i "${boot}/dtb/${dtb}" -o "${work}/merged.dtb" "${work}/overlay.dtbo"
+	if [[ ${change_limit} == yes ]]; then
+		cpu_staged=$(mktemp "${prefix}/etc/default/.eaidk610-cpu.XXXXXX")
+		awk '!/^MAX_SPEED=/' "${prefix}/etc/default/cpufrequtils" > "${cpu_staged}"
+		printf 'MAX_SPEED=%s\n' "${max}" >> "${cpu_staged}"
+		chmod 0644 "${cpu_staged}"
+	fi
+	chmod 0644 "${work}/overlay.dtbo"
+	mv -fT -- "${work}/overlay.dtbo" "${boot}/overlay-user/rk3399-eaidk-610-typec-fix.dtbo"
+	if [[ -n ${cpu_staged} ]]; then
+		mv -fT -- "${cpu_staged}" "${prefix}/etc/default/cpufrequtils"
+		cpu_staged=''
+	fi
+	printf '%s\n' "${mode}" > "${prefix}/etc/eaidk610/cpu-overclock"
+	printf 'CPU overclock: %s (next boot).\n' "${mode}"
+)
+
 main() {
-	local root=/ root_uuid='' extra='' extra_set=no disk='' refresh=no
+	local root=/ root_uuid='' extra='' extra_set=no disk='' refresh=no cpu_mode='' cpu_set=no
 	while (( $# )); do
 		case $1 in
 			--help|-h) usage; return 0 ;;
 			--refresh) refresh=yes; shift ;;
-			--root|--root-uuid|--extra-args|--install-uboot)
+			--root|--root-uuid|--extra-args|--install-uboot|--cpu-overclock)
 				(( $# >= 2 )) || fail "missing value for $1"
 				case $1 in
 					--root) root=$2 ;;
 					--root-uuid) root_uuid=$2 ;;
 					--extra-args) extra=$2; extra_set=yes ;;
 					--install-uboot) disk=$2 ;;
+					--cpu-overclock) cpu_mode=$2; cpu_set=yes ;;
 				esac
 				shift 2 ;;
 			*) fail "unknown option: $1" ;;
 		esac
 	done
+	[[ ${cpu_set} == no || ${cpu_mode} == on || ${cpu_mode} == off ]] || fail '--cpu-overclock must be on or off'
 	require_root
 	root=$(realpath -e -- "${root}")
 	local prefix=${root%/} boot=${root%/}/boot
 	local config=${root%/}/boot/extlinux/extlinux.conf
 	local state=${root%/}/etc/eaidk610/boot-managed
 	if [[ ${refresh} == yes ]]; then
-		[[ -z ${disk} && ${extra_set} == no && -z ${root_uuid} ]] || fail '--refresh cannot change migration options'
+		[[ -z ${disk} && ${extra_set} == no && -z ${root_uuid} && ${cpu_set} == no ]] || fail '--refresh cannot change migration options'
 		[[ -f ${state} ]] || return 0
+	fi
+	if [[ ${cpu_set} == no && -f ${prefix}/etc/eaidk610/cpu-overclock ]]; then
+		cpu_mode=$(< "${prefix}/etc/eaidk610/cpu-overclock")
+		[[ ${cpu_mode} == on || ${cpu_mode} == off ]] || fail 'invalid saved CPU overclock selection'
 	fi
 	[[ -f ${prefix}/etc/armbian-release ]] || fail 'target is not an installed Armbian system'
 	[[ $(dpkg-query --admindir="${prefix}/var/lib/dpkg" -W -f='${Architecture}' linux-image-edge-rockchip64) == arm64 ]] ||
 		fail 'install the ARM64 rockchip64 kernel in the target first'
-	local BOARD_CMDLINE='' BOOT_DTB=''
+	local BOARD_CMDLINE='' BOOT_DTB='' CPU_MAX_DEFAULT=''
 	# Generated from the native board definition, not a second set of defaults.
 	# shellcheck source=/dev/null
 	source "${prefix}/usr/share/eaidk610/boot-defaults"
@@ -132,6 +179,9 @@ main() {
 		check_uboot "${disk}" "${firmware}"
 	fi
 	mkdir -p "${boot}/extlinux" "${prefix}/etc/eaidk610"
+	if [[ -n ${cpu_mode} ]]; then
+		configure_cpu_overlay "${prefix}" "${cpu_mode}" "${cpu_set}" "${BOOT_DTB}" "${CPU_MAX_DEFAULT}"
+	fi
 	local staged
 	staged=$(mktemp "${boot}/extlinux/.eaidk610.XXXXXX")
 	# Each invocation runs in its own process; remove only its temporary entry.

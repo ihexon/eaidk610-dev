@@ -43,6 +43,9 @@ installation. See [boot configuration](docs/build.md#boot-configuration).
 - Native extlinux boot with one entry and the board overlay enabled by default.
 - `eaidk610-typec` CLI for runtime role/policy control, included in the native BSP
   and installed in images by default; no background service required.
+- Optional CPU overclocking through `eaidk610-boot-setup --cpu-overclock on|off`,
+  disabled by default; experimental voltages and validation limits are described
+  in [hardware support](docs/hardware.md#optional-cpu-overclocking).
 - EAIDK610 fixes for Type-C role switching, USB3 PHY orientation, RT5651 audio,
   HDMI supplies and audio, SD card supplies and UHS modes, serial console
   initialization, and Bluetooth firmware lookup.

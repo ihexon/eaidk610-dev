@@ -68,6 +68,7 @@ overlay_owner=$(dpkg-query --admindir="${mount_dir}/var/lib/dpkg" -S \
 [[ -x ${mount_dir}/usr/sbin/eaidk610-boot-setup && -s ${mount_dir}/usr/share/eaidk610/boot-defaults ]] || \
 	fail 'BSP boot configuration support is missing'
 [[ -f ${mount_dir}/etc/eaidk610/boot-managed ]] || fail 'image boot entry is not managed by the BSP'
+[[ -s ${mount_dir}/usr/share/eaidk610/cpu-overclock.dts ]] || fail 'optional CPU overlay source is missing'
 kernel_image=$(find "${mount_dir}/boot" -maxdepth 1 -type f \
 	-name 'vmlinuz-*edge-rockchip64' -print -quit)
 module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \
@@ -80,6 +81,9 @@ merged_dtb="${validate_tmp}/merged.dtb"
 fdtoverlay -i "${dtb_path}" -o "${merged_dtb}" \
 	"${mount_dir}/boot/overlay-user/rk3399-eaidk-610-typec-fix.dtbo" || \
 	fail 'Type-C overlay cannot be applied to the final EAIDK610 DTB'
+if fdtget "${merged_dtb}" /opp-table-1/opp-2208000000 opp-hz >/dev/null 2>&1; then
+	fail 'experimental CPU overclock must be disabled in the default image'
+fi
 [[ $(fdtget -t s "${merged_dtb}" /regulator-vcc5v0-typec status) == disabled ]] || \
 	fail 'overlay did not disable the always-on Type-C regulator'
 [[ $(fdtget -t s "${merged_dtb}" /regulator-vcc5v0-typec-managed status) == okay ]] || \

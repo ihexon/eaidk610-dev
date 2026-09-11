@@ -171,3 +171,39 @@ panel configurations are not enabled by this overlay.
 Storage measurements cover one eMMC device and one SD card with short I/O
 tests. HS400 boot coverage is limited to a software reboot. Cold power-on,
 sustained workloads, suspend/resume and other storage variants remain unqualified.
+
+## Optional CPU overclocking
+
+CPU overclocking is disabled in the default image and packaged board overlay.
+`eaidk610-boot-setup --cpu-overclock on` enables the following additional OPPs;
+`--cpu-overclock off` restores the base CPU table and the board's default maximum
+frequency limit. Other board fixes remain enabled.
+
+| Cluster | Additional frequency | Voltage |
+| --- | --- | --- |
+| Cortex-A53 | 1.608 GHz | 1.225 V |
+| Cortex-A53 | 1.800 GHz | 1.2875 V |
+| Cortex-A72 | 2.016 GHz | 1.250 V |
+| Cortex-A72 | 2.208 GHz | 1.325 V |
+
+The tool compiles one complete `rk3399-eaidk-610-typec-fix.dtbo` from the BSP
+sources. It leaves the base DTB and kernel unchanged, retains the governor and
+thermal protection, and changes the CPU maximum in `/etc/default/cpufrequtils`.
+The choice is stored in `/etc/eaidk610/cpu-overclock`. Managed BSP upgrades
+reapply the selection without resetting subsequent user changes to the frequency
+limit. Changes require a reboot; the tool does not reboot automatically.
+Unrecorded manual overlay modifications are not adopted as an opt-in choice.
+
+These are experimental, out-of-spec settings. A72 1.325 V exceeds the 1.30 V
+absolute maximum in the [RK3399 datasheet, page 65](https://opensource.rock-chips.com/images/d/d7/Rockchip_RK3399_Datasheet_V2.1-20200323.pdf).
+A stable external supply and adequate active cooling are necessary but do not
+make the voltages electrically safe. Crashes, data corruption and permanent
+hardware damage are possible.
+
+On Linux 7.2.4, one board completed a 120-second, six-core reference-checked
+PBKDF2 workload with 17,218 successful calculations, a 69.4 C sampled peak,
+and no observed downclock or reboot. Another board completed two 60-second
+runs at these settings; one reached 85.6 C and downclocked near its end.
+These results do not establish long-term stability, safety, or compatibility
+across power supplies and board samples. The packaged switch has fixture
+coverage; its live upgrade and toggle behavior remains hardware-unqualified.
