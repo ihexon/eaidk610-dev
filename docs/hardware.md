@@ -207,3 +207,21 @@ runs at these settings; one reached 85.6 C and downclocked near its end.
 These results do not establish long-term stability, safety, or compatibility
 across power supplies and board samples. The packaged switch has fixture
 coverage; its live upgrade and toggle behavior remains hardware-unqualified.
+
+## RTL8812AU USB Wi-Fi
+
+The edge kernel enables `CONFIG_RTW88_8812AU=m` for RTL8812AU adapters,
+including USB ID `0bda:8812`. The mainline `rtw88_8812au` module and its
+dependencies are supplied by the kernel image DEB. No device-tree change,
+third-party DKMS driver or `EXTRAWIFI` injection is required.
+
+Firmware `rtw88/rtw8812a_fw.bin` is supplied by the standard `armbian-firmware`
+package, already installed in the complete image and required by the BSP.
+Firmware remains owned by that package, not duplicated in the board BSP or
+published as an additional release asset.
+
+Image validation checks the compiled module and firmware are present. USB-ID
+matching is defined by the upstream driver; association, throughput, USB3
+operation and suspend/resume on EAIDK610 remain hardware-unqualified. A
+high-speed USB connection is USB 2.0, not SuperSpeed, and limits throughput
+regardless of the adapter's advertised wireless rate.

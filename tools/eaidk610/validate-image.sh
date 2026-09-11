@@ -75,6 +75,10 @@ module_dir=$(find "${mount_dir}/lib/modules" -mindepth 1 -maxdepth 1 -type d \
 	-name '*edge-rockchip64' -print -quit)
 [[ -s ${kernel_image} ]] || fail 'edge rockchip64 kernel image is missing'
 [[ -d ${module_dir} ]] || fail 'edge rockchip64 module directory is missing'
+[[ -n $(find "${module_dir}" -type f -name 'rtw88_8812au.ko*' -print -quit) ]] || \
+	fail 'RTL8812AU kernel module is missing'
+[[ -s ${mount_dir}/lib/firmware/rtw88/rtw8812a_fw.bin ]] || \
+	fail 'RTL8812AU firmware is missing'
 
 [[ -s ${dtb_path} ]] || fail 'EAIDK610 base DTB is missing'
 merged_dtb="${validate_tmp}/merged.dtb"

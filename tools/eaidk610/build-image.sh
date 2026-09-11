@@ -102,6 +102,7 @@ mv "${compressed_tmp}" "${compressed_image}"
 	printf -- '- Type-C: Sink-preferred dual role; fixed 5V PD only (Source 1.8A, Sink 100mA interface budget); non-PD advertisement remains 1.5A\n'
 	printf -- '- Power qualification: independent 12V board supply required; one 5V PD contract and partner-initiated power-role swap tested; sustained 1.8A output and broader interoperability remain unqualified\n'
 	printf -- '- Kernel packages: image, DTB, headers, and libc development files\n'
+	printf -- '- USB Wi-Fi: RTL8812AU (0bda:8812) via the mainline rtw88_8812au module; firmware is supplied by the existing armbian-firmware package. Association and throughput remain hardware-unqualified.\n'
 	printf -- '- Board package: armbian-bsp-eaidk610-edge.deb, includes the default board overlay and eaidk610-typec userspace control tool\n'
 	printf -- '- CPU: overclocking is disabled by default; eaidk610-boot-setup --cpu-overclock on|off provides an explicit opt-in. Experimental A72 2.208GHz/1.325V and A53 1.800GHz/1.2875V; A72 voltage exceeds the datasheet absolute maximum and may damage hardware. Short workload tests are not long-term qualification.\n'
 	printf -- '- Migration: BSP includes eaidk610-boot-setup for explicit extlinux conversion; subsequent BSP upgrades refresh managed entries only\n'

@@ -34,6 +34,7 @@ for symbol in \
 	CONFIG_TYPEC_TCPM=y \
 	CONFIG_TYPEC_FUSB302=y \
 	CONFIG_TYPEC_EXTCON=m \
+	CONFIG_RTW88_8812AU=m \
 	CONFIG_SND_SOC_RT5651=m \
 	CONFIG_SND_SOC_SIMPLE_AMPLIFIER=m; do
 	grep -Fqx "${symbol}" "${kernel_config}" || fail "missing ${symbol}"
