@@ -9,7 +9,7 @@ Target: OPEN AI LAB EAIDK-610, Rockchip RK3399, 4 GiB RAM, eMMC.
 | FUSB302 | Detects unattached Source connections through fixed-source toggling; ignores received Hard Reset status while PD reception is disabled |
 | Type-C | Automatic dual role with Sink preference; fixed-5-V PD only: Source 1.8 A, Sink 100 mA interface budget; non-PD CC advertisement 1.5 A; DisplayPort disabled |
 | Type-C userspace control | `eaidk610-typec`, supplied by the native BSP; connection status, automatic dual-role policy, role preference, and separate data/power role requests |
-| USB3 Type-C PHY | `tcphy0` receives role and orientation through the Type-C extcon bridge |
+| USB3 Type-C PHY | `tcphy0` receives role and orientation through the Type-C extcon bridge; the connector graph reaches the bridge's registered direction switch, not the PHY's unsupported `orientation-switch` declaration |
 | Headphone detection | simple-audio-card, GPIO4_D4, active high |
 | Speaker amplifier | simple-audio-amplifier, GPIO0_B3, active high, powered by VCC5V0_SYS |
 | RT5651 | Headset microphone on IN3P; onboard microphone on differential IN2P/IN2N; both use `micbias1`; skips requesting an unwired codec interrupt |
@@ -139,6 +139,7 @@ persistence and the packaged image default remain hardware-unqualified.
 | USB3 Type-C Device | Linux 7.2.4 with persisted Sink preference: CDC ACM gadget reached configured state at SuperSpeed with a Windows PC in reverse orientation; sustained transfers and the other orientation not yet qualified |
 | Fixed-5-V PD | r8 DEBs, Linux 7.2.4: reboot and live PDO registration verified; one attached partner negotiated a 5 V / 100 mA Sink contract, requested a Sink-to-Source power-role swap, then established a 5 V / 1.8 A Source contract; data role remained Device. Sustained output current and broader interoperability remain unqualified |
 | Type-C userspace tool | Argument handling and sysfs fixture tests; r9 native BSP installation and non-root status/help verified on Linux 7.2.4. Userspace-requested role changes are not yet hardware-qualified |
+| Type-C probe dependency | Linux 7.2.5: corrected connector/bridge/PHY graph restores FUSB302 binding and `port0` registration after a software reboot. Dual-role/Sink-preferred defaults verified; one Windows PC attachment reports Device/Sink and normal orientation in non-PD mode. USB data enumeration, PD negotiation and reversed-orientation operation with this revision remain unqualified |
 | Audio | Linux 7.2.3 with board package 1.0.1: card registration and a 48 kHz stereo silent PCM playback test |
 | Onboard microphone | Linux 7.2.4, r9 BSP with updated audio-clock overlay: reboot verified; codec MCLK follows I2S1 at 12.288 MHz and GPIO4_A0 is assigned. Two 10-second, 48 kHz S16_LE stereo captures with IN2/BST2 enabled produced nonzero samples without clipping; listening quality remains unqualified |
 | Analog audio configuration | Linux 7.2.4: updated overlay reboot verified; onboard 40 dB boost and 0 dB ADC gain confirmed; initial ALSA state restores and all four UCM routes apply successfully, including speaker pin mute and exclusive IN2/IN3 selection. PipeWire/WirePlumber run with the board profile. Physical jack switching, audible playback, headset capture, full-duplex streams, and additional sample formats remain unqualified |

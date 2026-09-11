@@ -53,6 +53,25 @@
 				compatible = "linux,typec-extcon-bridge";
 				usb-role-switch;
 				orientation-switch;
+				/* Route connector lookup through the registered switch,
+				 * not directly to the extcon-only RK3399 PHY.
+				 */
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						eaidk_typec_connector: endpoint {
+							remote-endpoint = <&usbc_ss>;
+						};
+					};
+					port@1 {
+						reg = <1>;
+						eaidk_typec_phy: endpoint {
+							remote-endpoint = <&tcphy0_typec_ss>;
+						};
+					};
+				};
 			};
 		};
 	};
@@ -101,7 +120,8 @@
 	};
 	/* The RK3399 Type-C PHY driver gets both its USB role and SuperSpeed
 	 * lane orientation from extcon.  The orientation-switch boolean in the
-	 * upstream tcphy0_usb3 node is not consumed by this driver.
+	 * upstream tcphy0_usb3 node is not consumed by this driver. Connector
+	 * graph lookup must therefore reach the bridge instead (fragments 21/22).
 	 */
 	fragment@6 {
 		target = <&tcphy0>;
@@ -294,6 +314,18 @@
 		__overlay__ {
 			dmas = <&dmac_peri 0>, <&dmac_peri 1>;
 			dma-names = "tx", "rx";
+		};
+	};
+	fragment@21 {
+		target = <&usbc_ss>;
+		__overlay__ {
+			remote-endpoint = <&eaidk_typec_connector>;
+		};
+	};
+	fragment@22 {
+		target = <&tcphy0_typec_ss>;
+		__overlay__ {
+			remote-endpoint = <&eaidk_typec_phy>;
 		};
 	};
 };

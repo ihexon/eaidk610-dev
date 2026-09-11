@@ -109,6 +109,17 @@ tcphy0_extcon=$(fdtget -t x "${merged_dtb}" "${tcphy0_path}" extcon)
 bridge_phandle=$(fdtget -t x "${merged_dtb}" /typec-extcon phandle)
 [[ ${tcphy0_extcon} == "${bridge_phandle}" ]] || \
 	fail 'overlay did not connect the RK3399 Type-C PHY to the extcon bridge'
+# Both graph links must be reciprocal; TCPM must not look up the PHY as a switch.
+for link in 'usbc_ss 0' 'tcphy0_typec_ss 1'; do
+	read -r endpoint_symbol bridge_port <<< "${link}"
+	endpoint_path=$(fdtget -t s "${merged_dtb}" /__symbols__ "${endpoint_symbol}")
+	bridge_endpoint=/typec-extcon/ports/port@${bridge_port}/endpoint
+	[[ $(fdtget -t x "${merged_dtb}" "${endpoint_path}" remote-endpoint) == \
+		"$(fdtget -t x "${merged_dtb}" "${bridge_endpoint}" phandle)" && \
+		$(fdtget -t x "${merged_dtb}" "${bridge_endpoint}" remote-endpoint) == \
+		"$(fdtget -t x "${merged_dtb}" "${endpoint_path}" phandle)" ]] || \
+		fail 'Type-C graph must connect connector and PHY through the extcon bridge'
+done
 
 read -r hp_detect_gpio hp_detect_pin hp_detect_flags < <(
 	fdtget -t i "${merged_dtb}" /rt5651-sound simple-audio-card,hp-det-gpios
